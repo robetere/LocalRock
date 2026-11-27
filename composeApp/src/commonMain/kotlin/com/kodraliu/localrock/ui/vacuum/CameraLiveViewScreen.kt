@@ -38,6 +38,8 @@ import com.kodraliu.localrock.shared.vacuum.camera.CameraModelSupport
 import com.kodraliu.localrock.shared.vacuum.camera.supportsExperimentalManualDriving
 import com.kodraliu.localrock.shared.vacuum.camera.cameraModelSupport
 import com.kodraliu.localrock.shared.webrtc.liveViewSupported
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
@@ -97,6 +99,17 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
     // Existing credentials are kept only for this screen's foreground lifetime.
     var pin by remember(viewModel) { mutableStateOf("") }
     var typed by remember(viewModel) { mutableStateOf(false) }
+    val biometric = rememberCameraBiometricCredentials(viewModel.cameraCredentialScope)
+    var biometricSaved by remember(biometric) { mutableStateOf(biometric.saved) }
+    var saveBiometric by remember(biometric) { mutableStateOf(false) }
+    var biometricJob by remember { mutableStateOf<Job?>(null) }
+    var biometricMessage by remember { mutableStateOf<String?>(null) }
+    fun cancelBiometric() {
+        biometricJob?.cancel()
+        biometricJob = null
+        saveBiometric = false
+        biometricMessage = null
+    }
     var selectedTest by remember { mutableStateOf(CameraVideoTest.OEM_MATCH) }
     var preferredQuality by remember { mutableStateOf(CameraVideoQuality.HD) }
     var showConnectionTests by remember { mutableStateOf(false) }
@@ -116,13 +129,42 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
             if (!pendingCameraStart) live.start(pin, test, quality)
         }
     }
-    fun submitEntry(test: CameraVideoTest = CameraVideoTest.OEM_MATCH, quality: CameraVideoQuality = preferredQuality) {
+    fun submitEntry(test: CameraVideoTest = CameraVideoTest.OEM_MATCH, quality: CameraVideoQuality = preferredQuality,
+        allowSave: Boolean = true) {
         if (!canConnectNow || viewing) return
         val credential = pin
+        val rememberCredential = allowSave && saveBiometric && biometric.available && !biometricSaved
         dismissKeyboard()
         entry.submit(credential) {
             pin = credential
-            start(test, quality)
+            if (rememberCredential) {
+                biometricJob = entryScope.launch {
+                    try {
+                        biometricSaved = biometric.save(credential)
+                        saveBiometric = false
+                        start(test, quality)
+                    } finally {
+                        biometricJob = null
+                    }
+                }
+            } else start(test, quality)
+        }
+    }
+    fun unlockBiometric() {
+        if (!canConnectNow || viewing || checkingCredential || biometricJob != null) return
+        biometricMessage = null
+        biometricJob = entryScope.launch {
+            try {
+                val credential = biometric.unlock()
+                if (credential == null) {
+                    biometricMessage = "Could not unlock. Enter your PIN or pattern, or forget the saved credential."
+                } else {
+                    pin = credential
+                    submitEntry(allowSave = false)
+                }
+            } finally {
+                biometricJob = null
+            }
         }
     }
 
@@ -142,11 +184,13 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
             expanded = false
             exitDialog = false
             dockDialog = false
+            pin = ""
             live.stop()
             if (exitNavigates) onBack()
         }
     }
     fun requestExit(navigate: Boolean) {
+        cancelBiometric()
         entry.cancel()
         dismissKeyboard()
         motion.release()
@@ -166,6 +210,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
     }
     // A microphone permission prompt can pause the app without backgrounding it.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        cancelBiometric()
         entry.cancel()
         testingEnabled = false
         pin = ""
@@ -232,12 +277,14 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
                     Text(viewModel.deviceName, style = MaterialTheme.typography.titleMedium)
                     if (modelSupport == CameraModelSupport.EXPERIMENTAL) {
                         Text("Video and audio testing", style = MaterialTheme.typography.titleMedium)
-                        Text("LocalRock video and audio calls have only been tested on S7 MaxV. Enable testing to try them on your robot, and report whether video and audio work on your model.",
+                        Text(if (sarosDriveTest) "Video, Android two-way audio and manual driving have been observed on Saros 10R firmware 02.52.86 in this fork. Compatibility remains experimental; cleaning and Pin-and-Go are not enabled."
+                            else "S7 MaxV is upstream-tested. Saros 10R has experimental hardware results in this fork. Enable testing to report compatibility for your robot.",
                             textAlign = TextAlign.Center)
                         Text(listOfNotNull(viewModel.modelName, viewModel.firmwareVersion?.let { "Firmware $it" }).joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
                         Row(Modifier.fillMaxWidth().toggleable(value = testingEnabled, role = Role.Checkbox,
                             onValueChange = {
+                                cancelBiometric()
                                 entry.cancel()
                                 pin = ""
                                 testingEnabled = it
@@ -262,7 +309,38 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
                         motionError?.let { Text(it, color = Color.Yellow, textAlign = TextAlign.Center) }
                         Text("Enter your existing camera PIN or pattern. Activate remote viewing in the official Roborock app before switching to the local server.",
                             textAlign = TextAlign.Center)
-                        if (typed) {
+                        if (biometric.available && biometricSaved) {
+                            Button(onClick = { unlockBiometric() },
+                                enabled = !checkingCredential && biometricJob == null,
+                                modifier = Modifier.fillMaxWidth()) {
+                                Text("Unlock with fingerprint")
+                            }
+                        }
+                        if (biometric.available && !biometricSaved) {
+                            Row(Modifier.fillMaxWidth().toggleable(value = saveBiometric, role = Role.Checkbox,
+                                enabled = !checkingCredential && biometricJob == null,
+                                onValueChange = { saveBiometric = it }), verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = saveBiometric, onCheckedChange = null,
+                                    enabled = !checkingCredential && biometricJob == null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Save verified PIN or pattern for fingerprint unlock")
+                            }
+                            Text("Encrypted on this phone. A fingerprint is required to save and unlock.",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (biometricSaved) {
+                            TextButton(onClick = {
+                                biometric.forget()
+                                biometricSaved = biometric.saved
+                                biometricMessage = null
+                            }, enabled = biometricJob == null && !checkingCredential) {
+                                Text("Forget saved camera credential")
+                            }
+                        }
+                        biometricMessage?.let { Text(it, color = Color.Yellow) }
+                        if (biometricJob != null) {
+                            Text("Waiting for biometric authentication…")
+                        } else if (typed) {
                             OutlinedTextField(
                                 value = pin, onValueChange = { pin = it.filter { c -> c in '0'..'9' } }, label = { Text("Existing camera PIN") },
                                 singleLine = true, enabled = !checkingCredential, visualTransformation = PasswordVisualTransformation(),
@@ -286,7 +364,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
                             TextButton(onClick = { entry.cancel(); pin = "" }) { Text("Cancel", color = Color.White) }
                         }
                         credentialError?.let { Text(it, color = Color.Yellow, textAlign = TextAlign.Center) }
-                        TextButton(onClick = { entry.cancel(); dismissKeyboard(); typed = !typed; pin = "" }) {
+                        TextButton(onClick = { entry.cancel(); dismissKeyboard(); typed = !typed; pin = "" }, enabled = biometricJob == null) {
                             Text(if (typed) "Use a pattern" else "Use a numeric PIN", color = Color.White)
                         }
                         Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -294,9 +372,9 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
                                 FilterChip(selected=preferredQuality==quality,onClick={preferredQuality=quality},enabled=!checkingCredential,label={Text(quality.name)})
                             }
                         }
-                        if (typed || showConnectionTests) Button(onClick={submitEntry()},enabled=pin.isNotBlank() && !checkingCredential) {Text("Open video")}
+                        if (typed || showConnectionTests) Button(onClick={submitEntry()},enabled=pin.isNotBlank() && !checkingCredential && biometricJob == null) {Text("Open video")}
                         TextButton(onClick={showConnectionTests=!showConnectionTests},enabled=!checkingCredential) {Text("Connection tests (SD)")}
-                        if(showConnectionTests) CameraTestTiles(enabled=pin.isNotBlank() && !checkingCredential,onStart={submitEntry(it,CameraVideoQuality.SD)})
+                        if(showConnectionTests) CameraTestTiles(enabled=pin.isNotBlank() && !checkingCredential && biometricJob == null,onStart={submitEntry(it,CameraVideoQuality.SD)})
                         Text("Video does not use your phone's camera. Your microphone is used only during a voice call; audio is not saved.",
                             style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
                         cleanupWarning?.let { Text(it, color = Color.Yellow, textAlign = TextAlign.Center) }

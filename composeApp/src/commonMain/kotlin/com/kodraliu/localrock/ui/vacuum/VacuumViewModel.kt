@@ -68,6 +68,7 @@ class VacuumViewModel(
     }
 
     val deviceName: String = device.name
+    internal val cameraCredentialScope: String = "${container.appSettings.serverBaseUrl.value}\n${device.duid}"
     val modelName: String? = container.deviceRepository.productsByDuid.value[duid]?.model
     val modelDisplayName: String? = productDisplayName(container.deviceRepository.productsByDuid.value[duid])
     val firmwareVersion: String? = device.fv
