@@ -155,7 +155,7 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
             reset("Controller disconnected")
             return
         }
-        state.tick(SystemClock.uptimeMillis())
+        state.tick()
         publishStatus()
     }
 

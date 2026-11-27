@@ -44,7 +44,7 @@ class CameraGamepadStateTest {
         assertEquals(CameraPadState.STOPPING, r.machine.state)
         r.input(1.0)
         r.busy = false
-        r.machine.tick(100)
+        r.machine.tick()
         assertEquals(CameraPadState.WAIT_NEUTRAL, r.machine.state)
         assertEquals(1, r.moves.size)
         r.arm(); r.input(.3)
@@ -54,10 +54,10 @@ class CameraGamepadStateTest {
     @Test fun ordinaryNeutralStopRearmsOnlyAfterCleanup() {
         val r = Rig()
         r.arm(); r.input(1.0); r.input(0.0)
-        r.machine.tick(100)
+        r.machine.tick()
         assertEquals(CameraPadState.STOPPING, r.machine.state)
         r.busy = false
-        r.machine.tick(200)
+        r.machine.tick()
         assertEquals(CameraPadState.ARMED_IDLE, r.machine.state)
         r.input(.5, time = 250)
         assertEquals(2, r.moves.size)
@@ -69,47 +69,32 @@ class CameraGamepadStateTest {
         r.arm(); r.input(1.0); r.input(0.0)
         r.failed = true
         r.busy = false
-        r.machine.tick(100)
+        r.machine.tick()
         assertEquals(CameraPadState.WAIT_NEUTRAL, r.machine.state)
         r.input(1.0)
         assertEquals(1, r.moves.size)
     }
 
-    @Test fun staleInputDisarmsAndDoesNotResumeAutomatically() {
+    @Test fun steadyTriggerDoesNotExpireAndNeutralStopsImmediately() {
         val r = Rig()
         r.arm(); r.input(1.0)
-        r.machine.tick(1_500)
+        repeat(100) { r.machine.tick() }
         assertEquals(CameraPadState.DRIVING, r.machine.state)
-        r.machine.tick(CAMERA_PAD_INPUT_LEASE_MS - 1)
-        assertEquals(CameraPadState.DRIVING, r.machine.state)
-        r.machine.tick(CAMERA_PAD_INPUT_LEASE_MS)
-        assertEquals(CameraPadState.WAIT_NEUTRAL, r.machine.state)
-        assertEquals(1, r.releases)
-        r.busy = false
-        r.input(0.0, time = CAMERA_PAD_INPUT_LEASE_MS + 100)
-        r.input(1.0, time = CAMERA_PAD_INPUT_LEASE_MS + 200)
-        assertEquals(1, r.moves.size)
-    }
-
-    @Test fun steadyTriggerSurvivesStartupButFreshNeutralStopsImmediately() {
-        val r = Rig()
-        r.arm(); r.input(1.0)
-        r.machine.tick(3_000)
-        assertEquals(CameraPadState.DRIVING, r.machine.state)
-        r.input(0.0, time = 3_100)
+        assertEquals(0, r.releases)
+        r.input(0.0, time = 60_000)
         assertEquals(CameraPadState.STOPPING, r.machine.state)
         assertEquals(1, r.releases)
     }
 
-    @Test fun freshAxisChangesExtendTheBoundedLease() {
+    @Test fun lossOfMotionOperationDisarmsEvenWithSteadyTrigger() {
         val r = Rig()
         r.arm(); r.input(1.0)
-        r.input(.9, time = 4_000)
-        r.machine.tick(8_999)
-        assertEquals(CameraPadState.DRIVING, r.machine.state)
-        r.machine.tick(9_000)
+        r.busy = false
+        r.machine.tick()
         assertEquals(CameraPadState.WAIT_NEUTRAL, r.machine.state)
         assertEquals(1, r.releases)
+        r.input(1.0, time = 60_000)
+        assertEquals(1, r.moves.size)
     }
 
     @Test fun staleQueuedEventsAndConflictingTriggersFailClosed() {

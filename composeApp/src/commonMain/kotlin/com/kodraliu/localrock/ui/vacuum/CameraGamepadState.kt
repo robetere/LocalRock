@@ -24,8 +24,7 @@ internal fun cameraPadInput(layout: CameraPadLayout, x: Double, y: Double, left:
 }
 
 // Android reports axis changes, not a guaranteed periodic heartbeat for a steady stick.
-// A bounded silence lease permits ordinary holds but never substitutes for a fresh event.
-internal const val CAMERA_PAD_INPUT_LEASE_MS = 5_000L
+// Reject delayed queued events, but do not time out a valid unchanged axis position.
 internal const val CAMERA_PAD_EVENT_MAX_AGE_MS = 1_500L
 
 internal enum class CameraPadState {
@@ -40,7 +39,6 @@ internal class CameraGamepadState(
     private val busy: () -> Boolean,
     private val move: (CameraPadInput, Boolean) -> Boolean,
     private val release: () -> Unit,
-    private val staleMs: Long = CAMERA_PAD_INPUT_LEASE_MS,
     private val motionFailed: () -> Boolean = { false },
 ) {
     var state = CameraPadState.WAIT_NEUTRAL
@@ -93,16 +91,14 @@ internal class CameraGamepadState(
         }
     }
 
-    fun tick(nowMs: Long) {
+    fun tick() {
         if ((state == CameraPadState.DRIVING || state == CameraPadState.STOPPING) && motionFailed()) {
             disarm("Drive not confirmed · centre controls and press A")
             return
         }
         when (state) {
             CameraPadState.DRIVING -> {
-                val age = lastInputMs?.let { nowMs - it }
-                if (age == null || age !in 0L until staleMs) disarm("Input unchanged too long · centre controls and press A")
-                else if (!busy()) disarm("Drive ended · centre controls and press A")
+                if (!busy()) disarm("Drive ended · centre controls and press A")
             }
             CameraPadState.STOPPING -> if (!busy()) {
                 if (lastInputNeutral) set(CameraPadState.ARMED_IDLE, "Controller ready · move to drive")
