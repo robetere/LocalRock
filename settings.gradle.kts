@@ -10,6 +10,9 @@ pluginManagement {
                 includeGroupAndSubgroups("com.google")
             }
         }
+        // Use the alternate official Maven Central endpoint for CI resolution.
+        // Retain the standard endpoint for fallback; no third-party mirrors.
+        maven("https://repo1.maven.org/maven2/")
         mavenCentral()
         gradlePluginPortal()
     }
@@ -24,6 +27,9 @@ dependencyResolutionManagement {
                 includeGroupAndSubgroups("com.google")
             }
         }
+        // Use the alternate official Maven Central endpoint for CI resolution.
+        // Retain the standard endpoint for fallback; no third-party mirrors.
+        maven("https://repo1.maven.org/maven2/")
         mavenCentral()
         maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
     }
