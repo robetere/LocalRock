@@ -86,9 +86,9 @@ internal fun CameraVideoControls(
     var showMiniMap by remember { mutableStateOf(false) }
     var cockpitMode by remember { mutableStateOf(CockpitMode.VIEWER) }
     var details by remember { mutableStateOf(false) }
-    val showDriveTest = cockpitMode == CockpitMode.PILOT
     var gamepadSelected by remember { mutableStateOf(false) }
     val mapMode = sarosDriveTest && cockpitMode == CockpitMode.MAP
+    val showDriveTest = cockpitMode == CockpitMode.PILOT || mapMode
     fun changeMode(mode: CockpitMode) { motion.release(); gamepadSelected=false; cockpitMode = mode }
     val gamepadStatus = CameraGamepadSession(motion, sarosDriveTest && showDriveTest && gamepadSelected && ready && !callBusy && !settings && !details)
     var mapExpanded by remember { mutableStateOf(false) }
@@ -187,8 +187,9 @@ internal fun CameraVideoControls(
         val overlayInsets = if (expanded) WindowInsets.safeDrawing else WindowInsets(0, 0, 0, 0)
         val portraitVideoHeight = maxHeight * .43f
         val miniMapSize = minOf(maxWidth * .28f, maxHeight * .19f, 116.dp)
-        val pilotPadSize = minOf(maxWidth * .44f, maxHeight * .33f, 180.dp)
-        val mapVideoHeight = maxHeight * .38f
+        val pilotPadSize = if (mapMode) minOf(maxWidth * .36f, maxHeight * .23f, 140.dp)
+            else minOf(maxWidth * .44f, maxHeight * .33f, 180.dp)
+        val mapVideoHeight = maxHeight * (if (gamepadSelected) .38f else .34f)
         val videoModifier = if (mapMode) Modifier.fillMaxWidth().height(mapVideoHeight)
             else if (expanded || !controlsAllowed) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(portraitVideoHeight)
         // Keep one native renderer composition site through expansion, rotation and map changes.
@@ -267,7 +268,8 @@ internal fun CameraVideoControls(
                             map?.let { CameraTargetMap(it,floor,null,false,{},Modifier.fillMaxSize()) }
                                 ?: Text("Map unavailable",color=Color.White)
                         }
-                        Spacer(Modifier.height(74.dp))
+                        // Keep the map clear of the touch joystick and input selector.
+                        Spacer(Modifier.height(86.dp + if (gamepadSelected) 48.dp else pilotPadSize + 8.dp))
                     }
                 }
             }
