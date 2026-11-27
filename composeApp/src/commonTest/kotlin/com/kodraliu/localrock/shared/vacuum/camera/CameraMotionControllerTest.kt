@@ -77,7 +77,7 @@ class CameraMotionControllerTest {
             for ((_, params) in moves) {
                 val move = params.jsonArray.single().jsonObject
                 assertTrue(kotlin.math.abs(move["velocity"]!!.jsonPrimitive.double) <= .08)
-                assertTrue(kotlin.math.abs(move["omega"]!!.jsonPrimitive.double) <= .25)
+                assertTrue(kotlin.math.abs(move["omega"]!!.jsonPrimitive.double) <= .4)
                 assertEquals(500, move["duration"]!!.jsonPrimitive.int)
             }
             assertEquals(listOf("app_rc_stop","app_rc_end"),rpc.methods().takeLast(2))
@@ -97,6 +97,24 @@ class CameraMotionControllerTest {
             assertNotNull(c.error.value)
             c.dispose(); advanceUntilIdle()
         }
+    }
+
+    @Test fun saros_analogue_updates_vector_without_restarting_manual_mode() = runTest {
+        val rpc=Rpc()
+        val c=CameraMotionController(rpc,{true},
+            CoroutineScope(SupervisorJob()+StandardTestDispatcher(testScheduler)),
+            experimentalDriveOnly=true)
+        assertTrue(c.pilotInput(1.0,0.0,2,start=true))
+        runCurrent(); advanceTimeBy(250); runCurrent()
+        assertTrue(c.pilotInput(.5,-1.0,3,start=false))
+        advanceTimeBy(250); runCurrent(); c.release(); advanceUntilIdle()
+        val last=rpc.calls.last {it.first=="app_rc_move"}.second.jsonArray.single().jsonObject
+        assertEquals(.04,last["velocity"]!!.jsonPrimitive.double)
+        assertEquals(-.4,last["omega"]!!.jsonPrimitive.double)
+        assertEquals(1,rpc.methods().count {it=="app_rc_start"})
+        assertEquals(listOf("app_rc_stop","app_rc_end"),rpc.methods().takeLast(2))
+        assertFalse(c.pilotInput(1.0,0.0,2,start=false))
+        c.dispose(); advanceUntilIdle()
     }
 
     @Test fun saros_can_enter_manual_mode_from_charging() = runTest {

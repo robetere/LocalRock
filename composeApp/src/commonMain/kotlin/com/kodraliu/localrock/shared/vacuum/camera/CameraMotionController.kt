@@ -54,8 +54,29 @@ class CameraMotionController internal constructor(
     private var sequence = 0
     private var navigationRequested = false
     private var disposed = false
+    private var pilotVector = Pair(0.0, 0.0)
+    private var sarosEndedSession = false
 
-    fun hold(direction: Direction) {
+    // Speed limits, not measured speeds. The Saros app previously exercised .4 rad/s.
+    fun pilotInput(throttle: Double, steering: Double, speed: Int, start: Boolean): Boolean {
+        if (!experimentalDriveOnly || !controlsAllowed || !throttle.isFinite() || !steering.isFinite() ||
+            throttle !in -1.0..1.0 || steering !in -1.0..1.0 || speed !in 1..3) return false
+        if (throttle == 0.0 && steering == 0.0) { release(); return false }
+        if (!start && (!holding || job == null)) return false
+        if (start && (disposed || job != null || haltJob != null)) return false
+        val v = listOf(.04, .06, .08)[speed - 1]
+        val w = listOf(.25, .32, .4)[speed - 1]
+        pilotVector = Pair(throttle * v, steering * w)
+        if (start) beginHold { pilotVector }
+        return true
+    }
+
+    fun hold(direction: Direction) = beginHold {
+        Pair(if (experimentalDriveOnly) direction.velocity.coerceIn(-.08, .08) else direction.velocity,
+            if (experimentalDriveOnly) direction.omega.coerceIn(-.4, .4) else direction.omega)
+    }
+
+    private fun beginHold(vector: () -> Pair<Double, Double>) {
         if (disposed || job != null || haltJob != null || !controlsAllowed) return
         holding = true
         launchOperation {
@@ -85,9 +106,16 @@ class CameraMotionController internal constructor(
                 while (currentCoroutineContext().isActive) {
                     requireReady()
                     _viewerStartedActivity.value = true
-                    val velocity = if (experimentalDriveOnly) direction.velocity.coerceIn(-.08, .08) else direction.velocity
-                    val omega = if (experimentalDriveOnly) direction.omega.coerceIn(-.25, .25) else direction.omega
+                    val (velocity, omega) = vector()
                     ack("app_rc_move", movement(velocity, omega, ++sequence))
+                    if (experimentalDriveOnly) _progress.value = when {
+                        velocity > 0 && omega != 0.0 -> "Driving and steering"
+                        velocity < 0 && omega != 0.0 -> "Reversing and steering"
+                        velocity > 0 -> "Driving forward"
+                        velocity < 0 -> "Reversing"
+                        omega > 0 -> "Turning left"
+                        else -> "Turning right"
+                    }
                     delay(200)
                 }
             } catch (e: CancellationException) {
@@ -99,6 +127,7 @@ class CameraMotionController internal constructor(
             } finally {
                 holding = false
                 if (_manualMode.value) withContext(NonCancellable) {
+                    if (experimentalDriveOnly) _progress.value = "Stopping…"
                     val stopped = runCatching { ack("app_rc_stop") }
                         .onFailure(::reportFailure).isSuccess
                     // Normal release retains the OEM manual session and its sequence numbers.
@@ -116,8 +145,16 @@ class CameraMotionController internal constructor(
         _progress.value = "Checking robot…"
         var status = readStatus()
         requireNoTask(status)
-        if (experimentalDriveOnly && (status.state() !in setOf(3, 8, 100) || status.number("in_returning") != 0 || _manualMode.value))
-            throw MotionFailure("Saros drive test requires an idle or charging robot, with no active manual or return-to-dock session.")
+        if (experimentalDriveOnly) {
+            if (sarosEndedSession && status.state() in manualStates && status.number("in_returning") == 0) {
+                _progress.value = "Waiting for previous drive to finish…"
+                status = waitForDriveState("Waiting for previous manual session to end",
+                    setOf(3, 8, 100), manualStates)
+            }
+            sarosEndedSession = false
+            if (status.state() !in setOf(3, 8, 100) || status.number("in_returning") != 0 || _manualMode.value)
+                throw MotionFailure("Drive blocked: state=${status.state() ?: "unknown"}, returning=${status.number("in_returning") ?: "unknown"}, manual=${_manualMode.value}. Wait for idle and retry.")
+        }
         if (status.state() == VacuumStateCodes.GOING_TO_TARGET && navigationRequested) {
             requireReady()
             _progress.value = "Stopping Pin-and-Go…"
@@ -258,6 +295,7 @@ class CameraMotionController internal constructor(
         return try {
             ack("app_rc_end")
             _manualMode.value = false
+            if (experimentalDriveOnly) sarosEndedSession = true
             true
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) {

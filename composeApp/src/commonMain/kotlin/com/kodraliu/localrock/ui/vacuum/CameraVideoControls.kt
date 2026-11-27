@@ -5,6 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import kotlin.math.abs
+import kotlin.math.sqrt
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -77,9 +83,13 @@ internal fun CameraVideoControls(
     var settings by remember { mutableStateOf(false) }
     // Preserve the tested-model default; experimental viewers start with the full frame.
     var fillVideo by remember { mutableStateOf(controlsAllowed) }
-    var showHud by remember { mutableStateOf(false) }
     var showMiniMap by remember { mutableStateOf(false) }
-    var showDriveTest by remember { mutableStateOf(false) }
+    var cockpitMode by remember { mutableStateOf(CockpitMode.VIEWER) }
+    var speed by remember { mutableStateOf(2) }
+    var details by remember { mutableStateOf(false) }
+    val showDriveTest = cockpitMode == CockpitMode.PILOT
+    val mapMode = sarosDriveTest && cockpitMode == CockpitMode.MAP
+    fun changeMode(mode: CockpitMode) { motion.release(); cockpitMode = mode }
     var mapExpanded by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
     var interaction by remember { mutableStateOf(0) }
@@ -122,7 +132,7 @@ internal fun CameraVideoControls(
     }
     LaunchedEffect(expanded) { if (!expanded) mapExpanded = false }
     LaunchedEffect(ready, settings) {
-        if (!ready || settings) { showDriveTest = false; motion.release() }
+        if (!ready || settings) { changeMode(CockpitMode.VIEWER) }
     }
     LaunchedEffect(viewModel, ready, status.state) {
         if (controlsAllowed && ready && status.state == VacuumStateCodes.REMOTE_CONTROL_ACTIVE) {
@@ -175,11 +185,14 @@ internal fun CameraVideoControls(
         val wide = expanded && landscape
         val overlayInsets = if (expanded) WindowInsets.safeDrawing else WindowInsets(0, 0, 0, 0)
         val portraitVideoHeight = maxHeight * .43f
-        val miniMapSize = minOf(maxWidth * .35f, maxHeight * .25f, 156.dp)
-        val videoModifier = if (expanded || !controlsAllowed) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(portraitVideoHeight)
+        val miniMapSize = minOf(maxWidth * .28f, maxHeight * .19f, 116.dp)
+        val pilotPadSize = minOf(maxWidth * .44f, maxHeight * .33f, 180.dp)
+        val mapVideoHeight = maxHeight * .38f
+        val videoModifier = if (mapMode) Modifier.fillMaxWidth().height(mapVideoHeight)
+            else if (expanded || !controlsAllowed) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(portraitVideoHeight)
         // Keep one native renderer composition site through expansion, rotation and map changes.
         Box(videoModifier.background(Color.Black).clipToBounds()) {
-            peer?.let { currentPeer -> key(currentPeer) { RtcVideoView(currentPeer,Modifier.fillMaxSize(),fill=fillVideo && (wide || !controlsAllowed)) } }
+            peer?.let { currentPeer -> key(currentPeer) { RtcVideoView(currentPeer,Modifier.fillMaxSize(),fill=!mapMode && fillVideo && (wide || !controlsAllowed)) } }
             if (docked && controlsAllowed) {
                 Text("Robot docked. Choose a spot on the map and tap Go to move it and start video.",
                     Modifier.align(Alignment.Center).padding(horizontal=32.dp,vertical=72.dp),
@@ -199,8 +212,13 @@ internal fun CameraVideoControls(
                 .background(Color.Black.copy(alpha=.55f)).padding(horizontal=4.dp),verticalAlignment=Alignment.CenterVertically) {
                 Text(status.battery?.let {"$it%"} ?: "—%",Modifier.padding(horizontal=8.dp),color=Color.White)
                 Text(headline,Modifier.weight(1f),color=Color.White,textAlign=TextAlign.Center,maxLines=1,overflow=TextOverflow.Ellipsis)
+                if (sarosDriveTest) {
+                    Icon(if (ready) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        if (ready) "Video connected" else "Video not connected",
+                        Modifier.size(18.dp),tint=if (ready) Color(0xff68d9a2) else Color(0xffffca75))
+                }
                 if (controlsVisible || !expanded) {
-                    TextButton(onClick={motion.release();settings=true}) { Text("Options",color=Color.White) }
+                    if (!sarosDriveTest) TextButton(onClick={motion.release();settings=true}) { Text("Options",color=Color.White) }
                 }
                 // Keep the exit reachable even after the driving overlays fade.
                 if (expanded) {
@@ -213,72 +231,92 @@ internal fun CameraVideoControls(
                     Icon(Icons.Default.Fullscreen,"Expand video",tint=Color.White)
                 }
                 if (controlsVisible || !expanded) {
-                    IconButton(onClick={motion.release();settings=true}) { Icon(Icons.Default.MoreVert,"Video settings",tint=Color.White) }
+                    IconButton(onClick={motion.release();settings=true}) { Icon(if(sarosDriveTest) Icons.Default.Settings else Icons.Default.MoreVert,"Video settings",tint=Color.White) }
                 }
             }
-            // Read-only cockpit overlays do not grant motion permissions or fetch new telemetry.
-            if (showHud) {
-                Column(Modifier.align(Alignment.CenterEnd)
-                    .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.End))
-                    .padding(end=8.dp).widthIn(max=160.dp)
-                    .background(Color.Black.copy(alpha=.72f)).padding(8.dp),
-                    verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    Text("CAMERA HUD",color=Color.White,style=MaterialTheme.typography.labelSmall)
-                    Text(if (ready) "Video connected" else "Video not connected",color=Color.White,
-                        style=MaterialTheme.typography.bodySmall)
-                    Text(status.battery?.let { "Battery: $it%" } ?: "Battery: unknown",
-                        color=Color.White,style=MaterialTheme.typography.bodySmall)
-                    Text(headline,color=Color.White,style=MaterialTheme.typography.bodySmall)
-                    if (diagnostics.videoWidth > 0 && diagnostics.videoHeight > 0)
-                        Text("${diagnostics.videoWidth} × ${diagnostics.videoHeight}",color=Color.White,
-                            style=MaterialTheme.typography.bodySmall)
-                    Text(diagnostics.summary,color=Color.White,style=MaterialTheme.typography.bodySmall)
-                }
-            }
-            // Experimental models may inspect the last available map, but cannot issue a target.
-            if (!controlsAllowed && showMiniMap) {
-                Box(Modifier.align(Alignment.CenterStart)
-                    .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Start))
-                    .padding(start=8.dp).size(miniMapSize)
-                    .background(Color(0xffe9edf1)),contentAlignment=Alignment.Center) {
-                    val currentMap = map
-                    if (currentMap == null) Text("Map unavailable",color=Color.DarkGray,
-                        textAlign=TextAlign.Center,style=MaterialTheme.typography.bodySmall)
-                    else CameraTargetMap(currentMap,floor,null,false,{},Modifier.fillMaxSize())
-                    Text("Last map",Modifier.align(Alignment.BottomCenter)
-                        .background(Color.Black.copy(alpha=.7f)).padding(3.dp),color=Color.White,
-                        style=MaterialTheme.typography.labelSmall)
+            if (!controlsAllowed && showMiniMap && !mapMode) {
+                Column(Modifier.align(Alignment.TopStart)
+                    .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Start))
+                    .padding(top=58.dp,start=8.dp).width(miniMapSize)
+                    .clip(RoundedCornerShape(12.dp)).background(Color(0xff171c20).copy(alpha=.88f))) {
+                    Box(Modifier.fillMaxWidth().height(miniMapSize)
+                        .background(Color(0xffe9edf1)),contentAlignment=Alignment.Center) {
+                        val currentMap = map
+                        if (currentMap == null) Text("No map",color=Color.DarkGray)
+                        else CameraTargetMap(currentMap,floor,null,false,{},Modifier.fillMaxSize(), gestures=false)
+                        if (sarosDriveTest) Box(Modifier.fillMaxSize().clickable { changeMode(CockpitMode.MAP) }
+                            .semantics { contentDescription="Open last map" })
+                    }
+                    Text("Last map",Modifier.fillMaxWidth().padding(4.dp),color=Color.White,
+                        textAlign=TextAlign.Center,style=MaterialTheme.typography.labelSmall)
                 }
             }
             if (!expanded && controlsAllowed) CameraCleaningButton(viewModel,motion,modifier=Modifier.align(Alignment.BottomEnd).padding(8.dp))
             if (!expanded && controlsAllowed) callIconButton(Modifier.align(Alignment.BottomStart).padding(8.dp))
         }
         if (!controlsAllowed) {
-            if (sarosDriveTest && showDriveTest && !settings) {
-                // The pad remains above the video footer on folded and unfolded displays.
-                CameraDrivePad(motion,ready,
-                    Modifier.align(Alignment.BottomStart)
-                        .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Start))
-                        .padding(start=12.dp,bottom=140.dp)
-                        .size(minOf(maxWidth*.48f,maxHeight*.34f,192.dp)),
-                    includeDockStop=false)
+            if (mapMode) {
+                Column(Modifier.fillMaxSize()) {
+                    Spacer(Modifier.height(mapVideoHeight))
+                    Column(Modifier.fillMaxWidth().weight(1f).background(Color(0xff171c20))
+                        .padding(8.dp)) {
+                        Text("Last available map · read-only",color=Color.LightGray,
+                            style=MaterialTheme.typography.labelMedium)
+                        Box(Modifier.fillMaxWidth().weight(1f),contentAlignment=Alignment.Center) {
+                            map?.let { CameraTargetMap(it,floor,null,false,{},Modifier.fillMaxSize()) }
+                                ?: Text("Map unavailable",color=Color.White)
+                        }
+                        Spacer(Modifier.height(74.dp))
+                    }
+                }
             }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+            if (sarosDriveTest && showDriveTest && !settings) {
+                Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+                    .padding(start=12.dp,end=12.dp,bottom=80.dp),
+                    horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.Bottom) {
+                    CameraPilotJoystick(motion,ready && !callBusy,speed,Modifier.size(pilotPadSize))
+                    Column(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xff171c20).copy(alpha=.88f))
+                        .padding(8.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+                        Text("Speed limit",color=Color.LightGray,style=MaterialTheme.typography.labelSmall)
+                        Row(verticalAlignment=Alignment.CenterVertically) {
+                            TextButton(onClick={speed--},enabled=!busy && speed>1,contentPadding=PaddingValues(0.dp),
+                                modifier=Modifier.width(36.dp)) {Text("−",color=if(!busy && speed>1) Color.White else Color.Gray)}
+                            Text("${listOf(4,6,8)[speed-1]} cm/s",color=Color.White,style=MaterialTheme.typography.labelMedium)
+                            TextButton(onClick={speed++},enabled=!busy && speed<3,contentPadding=PaddingValues(0.dp),
+                                modifier=Modifier.width(36.dp)) {Text("+",color=if(!busy && speed<3) Color.White else Color.Gray)}
+                        }
+                        Button(onClick={motion.stop(includeDock=false)},
+                            colors=ButtonDefaults.buttonColors(containerColor=Color(0xffb3261e),contentColor=Color.White)) {
+                            Icon(Icons.Default.Stop,null); Spacer(Modifier.width(4.dp)); Text("STOP")
+                        }
+                    }
+                }
+            }
+            Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                 .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-                .background(Color.Black.copy(alpha=.65f)).padding(12.dp),
-                horizontalAlignment=Alignment.CenterHorizontally) {
-                Text(if (sarosDriveTest) {
-                    if (showDriveTest) "Saros drive test · hold to move, release to stop"
-                    else if (docked) "Saros camera · Drive can leave the dock" else "Saros camera · experimental"
-                } else "Experimental video and audio · tested only on S7 MaxV",
-                    color=Color.White, textAlign=TextAlign.Center)
-                Row(verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-                    if (sarosDriveTest) TextButton(
-                        onClick={motion.release();showDriveTest=!showDriveTest},
-                        enabled=showDriveTest || (ready && !busy)
-                    ) { Text(if (showDriveTest) "Hide drive" else "Drive",color=Color.White) }
-                    callIconButton(Modifier)
-                    TextButton(onClick=onStopVideo) { Text("End video",color=Color.White) }
+                .padding(horizontal=8.dp,vertical=8.dp).clip(RoundedCornerShape(18.dp))
+                .background(Color(0xff171c20).copy(alpha=.90f)).padding(horizontal=4.dp,vertical=4.dp),
+                verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceEvenly) {
+                if (sarosDriveTest) {
+                    CockpitMode.entries.forEach { mode ->
+                        val label = when(mode) {
+                            CockpitMode.VIEWER -> "View"
+                            CockpitMode.PILOT -> "Pilot"
+                            CockpitMode.MAP -> "Map"
+                        }
+                        TextButton(onClick={changeMode(mode)},
+                            enabled=mode != CockpitMode.PILOT || ready,
+                            contentPadding=PaddingValues(horizontal=5.dp),
+                            modifier=Modifier.weight(1f)) {
+                            Text(label,color=if(cockpitMode==mode) Color(0xff68d9a2) else Color.White,
+                                style=MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+                callIconButton(Modifier)
+                IconButton(onClick={motion.release();onStopVideo()}) {
+                    Icon(Icons.Default.Close,"End video",tint=Color.White)
                 }
             }
         } else if (wide) {
@@ -338,16 +376,37 @@ internal fun CameraVideoControls(
                 .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                 .padding(bottom=12.dp))
         }
-        (error ?: callError ?: controlProgress)?.let {Text(it,Modifier.align(Alignment.TopCenter)
+        val issue = error ?: callError
+        if (sarosDriveTest) {
+            val message = when {
+                issue != null -> if (error != null) "Drive needs attention" else "Call needs attention"
+                controlProgress != null -> controlProgress
+                showDriveTest -> if (ready) "Hold joystick to drive" else "Video disconnected"
+                else -> null
+            }
+            if (message != null) Row(Modifier.align(Alignment.TopCenter)
+                .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Top))
+                .padding(top=56.dp,start=8.dp,end=8.dp).clip(RoundedCornerShape(10.dp))
+                .background(if(issue!=null) Color(0xff702e2e) else Color(0xff171c20).copy(alpha=.85f))
+                .padding(horizontal=10.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically) {
+                Text(message,color=Color.White,style=MaterialTheme.typography.labelMedium)
+                if (issue != null) TextButton(onClick={motion.release();changeMode(CockpitMode.VIEWER);details=true},
+                    contentPadding=PaddingValues(horizontal=8.dp)) {Text("Details",color=Color.White)}
+            }
+        } else (issue ?: controlProgress)?.let {Text(it,Modifier.align(Alignment.TopCenter)
             .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Top)).padding(top=52.dp)
-            .background(if (error != null || callError != null) Color(0xff5b2424) else Color(0xff242424))
+            .background(if (issue != null) Color(0xff5b2424) else Color(0xff242424))
             .padding(8.dp),color=Color.White)}
     }
+    if(details) AlertDialog(onDismissRequest={details=false},title={Text("Control details")},
+        text={Text(error ?: callError ?: "No current error")},
+        confirmButton={TextButton(onClick={details=false}){Text("Close")}})
     if(settings) AlertDialog(
         onDismissRequest={settings=false},title={Text("Remote viewing")},
         text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             if(diagnostics.videoWidth>0 && diagnostics.videoHeight>0)
                 Text("Received video: ${diagnostics.videoWidth} × ${diagnostics.videoHeight}")
+            Text(diagnostics.summary,style=MaterialTheme.typography.bodySmall)
             qualityError?.let {Text(it,color=MaterialTheme.colorScheme.error)}
             Text(if (controlsAllowed) "Landscape video framing" else "Video framing")
             Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -355,10 +414,6 @@ internal fun CameraVideoControls(
                 FilterChip(selected=fillVideo,onClick={fillVideo=true},label={Text("Fill")})
             }
             Text("Fit shows the whole camera frame. Fill trims edges to cover the screen.")
-            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                Text("Camera HUD",Modifier.weight(1f))
-                Switch(checked=showHud,onCheckedChange={showHud=it})
-            }
             if (!controlsAllowed) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                     Text("Read-only mini-map",Modifier.weight(1f))
@@ -393,6 +448,65 @@ internal fun CameraVideoControls(
         }},
         confirmButton={TextButton(onClick={settings=false}){Text("Done")}},
     )
+}
+
+private enum class CockpitMode { VIEWER, PILOT, MAP }
+
+/** One fresh touch gesture owns one drive operation. No restart after neutral or failure. */
+@Composable
+private fun CameraPilotJoystick(motion: CameraMotionController, enabled: Boolean, speed: Int, modifier: Modifier) {
+    var knob by remember { mutableStateOf(Offset.Zero) }
+    Canvas(modifier.semantics {contentDescription="Hold and drag joystick to drive; release to stop"}
+        .clip(CircleShape).background(Color(0xff171c20).copy(alpha=.78f))
+        .pointerInput(motion,enabled,speed) {
+            if (!enabled) return@pointerInput
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed=false)
+                down.consume()
+                val center=Offset(size.width/2f,size.height/2f)
+                val radius=minOf(size.width,size.height)*.36f
+                var attempted=false
+                var running=false
+                fun update(position: Offset) {
+                    val raw=(position-center)/radius.coerceAtLeast(1f)
+                    val len=sqrt(raw.x*raw.x+raw.y*raw.y)
+                    val unit=if(len>1f) raw/len else raw
+                    knob=unit
+                    if(len<.16f) {
+                        if(running) {motion.release();running=false}
+                    } else if(!attempted || running) {
+                        val throttle=if(abs(unit.y)<.14f) 0.0 else -unit.y.toDouble()
+                        val steering=if(abs(unit.x)<.14f) 0.0 else -unit.x.toDouble()
+                        if(throttle!=0.0 || steering!=0.0) {
+                            running=motion.pilotInput(throttle,steering,speed,start=!attempted)
+                            attempted=true
+                        }
+                    }
+                }
+                try {
+                    update(down.position)
+                    while(true) {
+                        val event=awaitPointerEvent()
+                        val change=event.changes.firstOrNull {it.id==down.id} ?: break
+                        if(!change.pressed || event.changes.count {it.pressed}>1) break
+                        if(change.isConsumed) break
+                        update(change.position)
+                        change.consume()
+                    }
+                } finally { motion.release(); knob=Offset.Zero }
+            }
+        }) {
+        val r=size.minDimension/2f
+        val tint=if(enabled) Color.White else Color.Gray
+        drawCircle(tint.copy(alpha=.45f),r*.92f,style=Stroke(1.5.dp.toPx()))
+        drawCircle(tint.copy(alpha=.25f),r*.70f,style=Stroke(1.dp.toPx()))
+        val c=center
+        for (v in listOf(Offset(0f,-1f),Offset(0f,1f),Offset(-1f,0f),Offset(1f,0f))) {
+            drawLine(tint,c+v*(r*.78f),c+v*(r*.88f),strokeWidth=2.dp.toPx())
+        }
+        drawCircle(Color(0xff64747d),r*.31f,c+knob*(r*.70f))
+        drawCircle(tint.copy(alpha=.8f),r*.31f,c+knob*(r*.70f),style=Stroke(1.dp.toPx()))
+    }
 }
 
 @Composable
@@ -449,7 +563,7 @@ internal fun cameraTargetAt(map: ParsedMap, normalized: Offset): Pair<Int,Int>? 
 }
 
 @Composable
-private fun CameraTargetMap(map: ParsedMap,floor:Int,target:Pair<Int,Int>?,enabled:Boolean,onTarget:(Pair<Int,Int>)->Unit,modifier:Modifier) {
+private fun CameraTargetMap(map: ParsedMap,floor:Int,target:Pair<Int,Int>?,enabled:Boolean,onTarget:(Pair<Int,Int>)->Unit,modifier:Modifier,gestures:Boolean=true) {
     val bitmap=rememberMapBitmap(map)
     val viewport=remember { LiveMapViewport() }
     val identity = map.viewportIdentity(floor)
@@ -467,7 +581,7 @@ private fun CameraTargetMap(map: ParsedMap,floor:Int,target:Pair<Int,Int>?,enabl
     val currentViewFor by rememberUpdatedState(::viewFor)
     val drawn = remember { DrawnView() }
     Canvas(modifier.clipToBounds()
-        .pointerInput(identity) { detectTransformGestures { center, pan, zoom, _ ->
+        .pointerInput(identity,gestures) { if (gestures) detectTransformGestures { center, pan, zoom, _ ->
             val next = (viewport.zoom * zoom).coerceIn(0.4f, 8f)
             val view = drawn.forHitTest { currentViewFor(size.toSize()) }
             val fit = view.k / viewport.zoom
