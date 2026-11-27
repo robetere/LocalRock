@@ -1030,7 +1030,7 @@ private val LABEL_PILL_FLAT = Color.White.copy(alpha = 0.8f)
 private val LABEL_PILL_3D = Color.Black.copy(alpha = 0.6f)
 
 @Composable
-private fun VacuumMapImage(
+internal fun VacuumMapImage(
     map: ParsedMap,
     selectedRoomIds: List<Int>,
     onRoomTap: (Int) -> Unit,
@@ -1044,6 +1044,7 @@ private fun VacuumMapImage(
     viewportScope: Any? = null,
     providedMapViewport: LiveMapViewport? = null,
     faintRoute: Boolean = false,
+    cameraReadOnlyFit: Boolean = false,
 ) {
     // Drawn larger than the grid so a zoomed-in view stays crisp; every length below that is measured
     // in the layers' own pixels (wall height, label lift) is in cells times this.
@@ -1079,7 +1080,8 @@ private fun VacuumMapImage(
     // The view is framed on the floor plan, once per map identity: a live update replaces the map object every
     // few seconds, and a plan that is still growing must not re-centre and rescale under the user's fingers.
     val identity = map.viewportIdentity(viewportScope)
-    val bounds = remember(identity) { map.contentBoundsNorm() }
+    val bounds = if (cameraReadOnlyFit) remember(map) { map.contentBoundsNorm() }
+        else remember(identity) { map.contentBoundsNorm() }
     val mapViewport = providedMapViewport ?: remember { LiveMapViewport() }
     LaunchedEffect(identity, is3D) { mapViewport.frameIfNeeded(identity to is3D) }
     // The gesture handlers outlive a live update, so they read the current map and view, not the ones they started with.
@@ -1093,7 +1095,7 @@ private fun VacuumMapImage(
             width, height,
             bounds.width * bitmap.width, bounds.height * bitmap.height,
             currentYaw, squash = 1f, freeTurning = is3D,
-        ) * (if (is3D) 1.1f else 1f)
+        ) * (if (cameraReadOnlyFit) .88f else if (is3D) 1.1f else 1f)
         return framedView(
             canvasW = width,
             canvasH = height,

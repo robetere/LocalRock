@@ -174,7 +174,10 @@ internal fun CameraVideoControls(
         val miniMapSize = minOf(maxWidth * .28f, maxHeight * .19f, 116.dp)
         val pilotPadSize = if (mapMode) minOf(maxWidth * .36f, maxHeight * .23f, 140.dp)
             else minOf(maxWidth * .44f, maxHeight * .33f, 180.dp)
-        val mapVideoHeight = maxHeight * (if (gamepadSelected) .38f else .34f)
+        // Reserve side rails for controls on unfolded / wide displays.
+        val mapSideRails = mapMode && maxWidth >= 520.dp && maxWidth > maxHeight * .78f && !gamepadSelected
+        val mapRailWidth = if (mapSideRails) pilotPadSize + 16.dp else 0.dp
+        val mapVideoHeight = maxHeight * (if (gamepadSelected || mapSideRails) .38f else .34f)
         val videoModifier = if (mapMode) Modifier.fillMaxWidth().height(mapVideoHeight)
             else if (expanded || !controlsAllowed) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(portraitVideoHeight)
         // Keep one native renderer composition site through expansion, rotation and map changes.
@@ -247,14 +250,14 @@ internal fun CameraVideoControls(
                     Spacer(Modifier.height(mapVideoHeight))
                     Column(Modifier.fillMaxWidth().weight(1f).background(Color(0xff171c20))
                         .padding(8.dp)) {
-                        Text("Last available map · read-only",color=Color.LightGray,
-                            style=MaterialTheme.typography.labelMedium)
-                        Box(Modifier.fillMaxWidth().weight(1f),contentAlignment=Alignment.Center) {
-                            map?.let { CameraTargetMap(it,floor,null,false,{},Modifier.fillMaxSize()) }
-                                ?: Text("Map unavailable",color=Color.White)
-                        }
-                        // Keep the map clear of the touch joystick and input selector.
-                        Spacer(Modifier.height(86.dp + if (gamepadSelected) 48.dp else pilotPadSize + 8.dp))
+                        CameraReadOnlyMap(
+                            map = map,
+                            floor = floor,
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                            sidePadding = mapRailWidth,
+                        )
+                        // On wide displays controls sit beside the map; on narrow displays below it.
+                        Spacer(Modifier.height(86.dp + if (mapSideRails) 0.dp else if (gamepadSelected) 48.dp else pilotPadSize + 8.dp))
                     }
                 }
             }

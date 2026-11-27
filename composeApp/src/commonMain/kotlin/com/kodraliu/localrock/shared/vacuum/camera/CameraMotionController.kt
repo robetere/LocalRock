@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.*
 
 private open class MotionFailure(message: String) : RuntimeException(message)
-private class MotionRefused(message: String) : MotionFailure(message)
+private class MotionRefused(message: String, val code: Int?) : MotionFailure(message)
 
 // Starting a session and reading status can be slow. Motion and stop acknowledgements
 // keep their short deadline; the robot's movement watchdog is also unchanged.
@@ -301,6 +301,21 @@ class CameraMotionController internal constructor(
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) {
             reportFailure(e)
+            // A refusal is not proof that manual mode ended. Only clear our local
+            // ownership after a fresh, independently verified non-moving status.
+            if (experimentalDriveOnly && e is MotionRefused && e.code == -10003) {
+                val status = try { readStatus() }
+                catch (cancel: CancellationException) { throw cancel }
+                catch (_: Exception) { return false }
+                if (status.state() in SarosManualDriveProfile.initialStates &&
+                    status.number("in_cleaning") == 0 && status.number("in_returning") == 0 &&
+                    status.number("error_code") == 0) {
+                    _manualMode.value = false
+                    sarosEndedSession = false
+                    reportFailure(MotionFailure("Robot reports idle or charging after manual-control refusal. Centre controls and explicitly retry when safe."))
+                    return true
+                }
+            }
             false
         }
     }
@@ -394,7 +409,7 @@ class CameraMotionController internal constructor(
         if (response.error != null) {
             // Do not expose raw replies, parameters or transport exception text.
             val code = (response.error as? JsonObject)?.number("code")
-            throw MotionRefused("$label was refused by the robot" + (code?.let { " (code $it)" } ?: "") + ".")
+            throw MotionRefused("$label was refused by the robot" + (code?.let { " (code $it)" } ?: "") + ".", code)
         }
         return response
     }

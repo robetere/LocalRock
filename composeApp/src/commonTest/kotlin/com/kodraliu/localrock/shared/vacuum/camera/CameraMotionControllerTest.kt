@@ -17,6 +17,8 @@ class CameraMotionControllerTest {
         var enterManualMode = true
         var statusDelay = 0L
         var refuse: String? = null
+        var manualSessionLost = false
+        var refuseManualState = 3
         var robotError = 0
         var stopTargetState = 3
         var transportFailure: String? = null
@@ -26,6 +28,10 @@ class CameraMotionControllerTest {
             calls += method to params
             delay(replyDelays[method] ?: 0)
             if (method == transportFailure) error("private transport details")
+            if (manualSessionLost && method in setOf("app_rc_move", "app_rc_stop", "app_rc_end")) {
+                state = refuseManualState
+                return V1Response(null, null, buildJsonObject { put("code", -10003) })
+            }
             if (method == refuse) return V1Response(null,null,buildJsonObject {
                 put("code",-1);put("message","private robot response")
             })
@@ -155,6 +161,37 @@ class CameraMotionControllerTest {
         assertTrue("app_rc_move" in rpc.methods())
         assertEquals(listOf("app_rc_stop","app_rc_end"),rpc.methods().takeLast(2))
         c.dispose(); advanceUntilIdle()
+    }
+
+    @Test fun sarosRefusedManualSessionCanRecoverOnlyAfterVerifiedIdle() = runTest {
+        val rpc = Rpc().apply { manualSessionLost = true }
+        val c = CameraMotionController(rpc, { true }, backgroundScope, experimentalDriveOnly = true)
+        assertTrue(c.pilotInput(1.0, 0.0, start = true))
+        runCurrent()
+        assertFalse(c.manualMode.value)
+        assertContains(c.error.value.orEmpty(), "-10003")
+        assertEquals("get_status", rpc.methods().last())
+        val moves = rpc.methods().count { it == "app_rc_move" }
+        advanceTimeBy(1_000); runCurrent()
+        assertEquals(moves, rpc.methods().count { it == "app_rc_move" })
+        rpc.manualSessionLost = false
+        assertTrue(c.pilotInput(.5, 0.0, start = true))
+        runCurrent()
+        assertEquals(moves + 1, rpc.methods().count { it == "app_rc_move" })
+        c.release(); runCurrent()
+        c.dispose(); runCurrent()
+    }
+
+    @Test fun sarosRefusalWhileStillInManualModeDoesNotClearOwnership() = runTest {
+        val rpc = Rpc().apply { manualSessionLost = true; refuseManualState = 7 }
+        val c = CameraMotionController(rpc, { true }, backgroundScope, experimentalDriveOnly = true)
+        assertTrue(c.pilotInput(1.0, 0.0, start = true))
+        runCurrent()
+        assertTrue(c.manualMode.value)
+        assertEquals("get_status", rpc.methods().last())
+        assertContains(c.error.value.orEmpty(), "-10003")
+        rpc.manualSessionLost = false
+        c.dispose(); runCurrent()
     }
 
     @Test fun saros_drive_only_never_issues_cleaning_navigation_or_dock_commands() = runTest {
