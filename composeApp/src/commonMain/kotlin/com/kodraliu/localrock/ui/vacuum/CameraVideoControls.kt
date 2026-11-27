@@ -75,7 +75,10 @@ internal fun CameraVideoControls(
     val callsSupported = peer?.supportsVoiceCall == true
     var steering by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
-    var fillVideo by remember { mutableStateOf(true) }
+    // Preserve the tested-model default; experimental viewers start with the full frame.
+    var fillVideo by remember { mutableStateOf(controlsAllowed) }
+    var showHud by remember { mutableStateOf(false) }
+    var showMiniMap by remember { mutableStateOf(false) }
     var mapExpanded by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
     var interaction by remember { mutableStateOf(0) }
@@ -171,7 +174,7 @@ internal fun CameraVideoControls(
         val videoModifier = if (expanded || !controlsAllowed) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(portraitVideoHeight)
         // Keep one native renderer composition site through expansion, rotation and map changes.
         Box(videoModifier.background(Color.Black).clipToBounds()) {
-            peer?.let { currentPeer -> key(currentPeer) { RtcVideoView(currentPeer,Modifier.fillMaxSize(),fill=wide && fillVideo) } }
+            peer?.let { currentPeer -> key(currentPeer) { RtcVideoView(currentPeer,Modifier.fillMaxSize(),fill=fillVideo && (wide || !controlsAllowed)) } }
             if (docked && controlsAllowed) {
                 Text("Robot docked. Choose a spot on the map and tap Go to move it and start video.",
                     Modifier.align(Alignment.Center).padding(horizontal=32.dp,vertical=72.dp),
@@ -206,6 +209,41 @@ internal fun CameraVideoControls(
                 }
                 if (controlsVisible || !expanded) {
                     IconButton(onClick={motion.release();settings=true}) { Icon(Icons.Default.MoreVert,"Video settings",tint=Color.White) }
+                }
+            }
+            // Read-only cockpit overlays do not grant motion permissions or fetch new telemetry.
+            if (showHud) {
+                Column(Modifier.align(Alignment.CenterEnd)
+                    .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.End))
+                    .padding(end=8.dp).widthIn(max=160.dp)
+                    .background(Color.Black.copy(alpha=.72f)).padding(8.dp),
+                    verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                    Text("CAMERA HUD",color=Color.White,style=MaterialTheme.typography.labelSmall)
+                    Text(if (ready) "Video connected" else "Video not connected",color=Color.White,
+                        style=MaterialTheme.typography.bodySmall)
+                    Text(status.battery?.let { "Battery: $it%" } ?: "Battery: unknown",
+                        color=Color.White,style=MaterialTheme.typography.bodySmall)
+                    Text(headline,color=Color.White,style=MaterialTheme.typography.bodySmall)
+                    if (diagnostics.videoWidth > 0 && diagnostics.videoHeight > 0)
+                        Text("${diagnostics.videoWidth} × ${diagnostics.videoHeight}",color=Color.White,
+                            style=MaterialTheme.typography.bodySmall)
+                    Text(diagnostics.summary,color=Color.White,style=MaterialTheme.typography.bodySmall)
+                }
+            }
+            // Experimental models may inspect the last available map, but cannot issue a target.
+            if (!controlsAllowed && showMiniMap) {
+                val mapSize = minOf(maxWidth * .35f, maxHeight * .25f, 156.dp)
+                Box(Modifier.align(Alignment.CenterStart)
+                    .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Start))
+                    .padding(start=8.dp).size(mapSize)
+                    .background(Color(0xffe9edf1)),contentAlignment=Alignment.Center) {
+                    val currentMap = map
+                    if (currentMap == null) Text("Map unavailable",color=Color.DarkGray,
+                        textAlign=TextAlign.Center,style=MaterialTheme.typography.bodySmall)
+                    else CameraTargetMap(currentMap,floor,null,false,{},Modifier.fillMaxSize())
+                    Text("Last map",Modifier.align(Alignment.BottomCenter)
+                        .background(Color.Black.copy(alpha=.7f)).padding(3.dp),color=Color.White,
+                        style=MaterialTheme.typography.labelSmall)
                 }
             }
             if (!expanded && controlsAllowed) CameraCleaningButton(viewModel,motion,modifier=Modifier.align(Alignment.BottomEnd).padding(8.dp))
@@ -290,12 +328,24 @@ internal fun CameraVideoControls(
             if(diagnostics.videoWidth>0 && diagnostics.videoHeight>0)
                 Text("Received video: ${diagnostics.videoWidth} × ${diagnostics.videoHeight}")
             qualityError?.let {Text(it,color=MaterialTheme.colorScheme.error)}
-            Text("Landscape video framing")
+            Text(if (controlsAllowed) "Landscape video framing" else "Video framing")
             Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 FilterChip(selected=!fillVideo,onClick={fillVideo=false},label={Text("Fit")})
                 FilterChip(selected=fillVideo,onClick={fillVideo=true},label={Text("Fill")})
             }
             Text("Fit shows the whole camera frame. Fill trims edges to cover the screen.")
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                Text("Camera HUD",Modifier.weight(1f))
+                Switch(checked=showHud,onCheckedChange={showHud=it})
+            }
+            if (!controlsAllowed) {
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text("Read-only mini-map",Modifier.weight(1f))
+                    Switch(checked=showMiniMap,onCheckedChange={showMiniMap=it})
+                }
+                Text("The mini-map uses the last available map. It cannot steer the robot or select a target.",
+                    style=MaterialTheme.typography.bodySmall)
+            }
             if (callsSupported) {
                 callButton(Modifier.fillMaxWidth())
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
