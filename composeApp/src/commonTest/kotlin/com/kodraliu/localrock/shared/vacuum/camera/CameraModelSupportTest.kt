@@ -23,6 +23,15 @@ class CameraModelSupportTest {
         }
     }
 
+    @Test fun experimental_manual_driving_is_limited_to_the_exact_saros_10r_model() {
+        assertTrue(supportsExperimentalManualDriving("roborock.vacuum.a144"))
+        for (model in listOf(null, "roborock.vacuum.a27", "roborock.vacuum.a147",
+            "roborock.vacuum.a97", "roborock.vacuum.a144 ", "roborock.vacuum.a1440")) {
+            assertFalse(supportsExperimentalManualDriving(model), model)
+        }
+        assertFalse(cameraModelSupport("roborock.vacuum.a144").allowsRobotControls)
+    }
+
     @Test fun unknown_models_and_similar_variants_cannot_be_opted_in() {
         // S7, S8, Qrevo, Qrevo Pro, Edge variants and malformed IDs stay hidden.
         for (model in listOf(null, "", "roborock.vacuum.a15", "roborock.vacuum.a70",

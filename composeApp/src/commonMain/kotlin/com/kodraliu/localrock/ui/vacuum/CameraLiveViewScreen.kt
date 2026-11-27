@@ -35,6 +35,7 @@ import com.kodraliu.localrock.shared.vacuum.camera.CameraVideoTest
 import com.kodraliu.localrock.shared.vacuum.camera.CameraVideoQuality
 import com.kodraliu.localrock.shared.vacuum.camera.experimentalCameraSupported
 import com.kodraliu.localrock.shared.vacuum.camera.CameraModelSupport
+import com.kodraliu.localrock.shared.vacuum.camera.supportsExperimentalManualDriving
 import com.kodraliu.localrock.shared.vacuum.camera.cameraModelSupport
 import com.kodraliu.localrock.shared.webrtc.liveViewSupported
 
@@ -47,8 +48,8 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
     val canConnect = videoEnabled && liveViewSupported && modelSupport.canConnect(testingEnabled)
     val canConnectNow by rememberUpdatedState(canConnect)
     val controlsAllowed = liveViewSupported && modelSupport.allowsRobotControls
-    // This fork permits only an explicit, low-speed manual drive test for Saros 10R.
-    val sarosDriveTest = liveViewSupported && viewModel.modelName == "roborock.vacuum.a144"
+    // Manual driving remains experimental and separate from cleaning and navigation.
+    val sarosDriveTest = liveViewSupported && supportsExperimentalManualDriving(viewModel.modelName)
     val live = remember(viewModel) {
         CameraLiveSession(viewModel.repository.session, accessAllowed = { canConnectNow })
     }
@@ -237,7 +238,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
                             Spacer(Modifier.width(8.dp))
                             Text("Enable video and audio testing for this robot")
                         }
-                        Text(if (sarosDriveTest) "Video testing includes an optional low-speed manual driving test. Keep the robot in sight and release the controls to stop. When charging, hold Forward to test leaving the dock. Cleaning and map navigation remain disabled."
+                        Text(if (sarosDriveTest) "Video testing includes optional experimental manual driving. Keep the robot in sight and release the controls to stop. When charging, move the joystick forward to test leaving the dock. Cleaning and map navigation remain disabled."
                             else "Testing enables video viewing and experimental voice calls on supported platforms. Driving and cleaning controls are unavailable on this model.",
                             style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
                         TextButton(onClick = { uriHandler.openUri("https://github.com/DonSidro/LocalRock/pull/95") }) {

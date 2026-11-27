@@ -33,3 +33,7 @@ fun cameraModelSupport(model: String?): CameraModelSupport = when (model) {
 }
 
 fun experimentalCameraSupported(model: String?): Boolean = cameraModelSupport(model).showsVideoEntry
+
+/** Experimental manual driving is independent of official video support and cleaning/navigation. */
+internal fun supportsExperimentalManualDriving(model: String?): Boolean =
+    model == "roborock.vacuum.a144" && cameraModelSupport(model) == CameraModelSupport.EXPERIMENTAL

@@ -1,19 +1,10 @@
 package com.kodraliu.localrock.ui.vacuum
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import kotlin.math.abs
-import kotlin.math.sqrt
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -23,37 +14,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.toSize
 import com.kodraliu.localrock.shared.vacuum.VacuumStateCodes
 import com.kodraliu.localrock.shared.vacuum.camera.CameraLiveSession
 import com.kodraliu.localrock.shared.vacuum.camera.CameraVideoQuality
 import com.kodraliu.localrock.shared.vacuum.camera.CameraMotionController
 import com.kodraliu.localrock.shared.vacuum.camera.CameraVoiceCall
-import com.kodraliu.localrock.shared.vacuum.map.MapFormat
-import com.kodraliu.localrock.shared.vacuum.map.ParsedMap
 import com.kodraliu.localrock.shared.webrtc.RtcPeer
 import com.kodraliu.localrock.shared.webrtc.RtcDiagnostics
 import com.kodraliu.localrock.shared.webrtc.RtcVideoView
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @Composable
 internal fun CameraVideoControls(
@@ -400,285 +380,41 @@ internal fun CameraVideoControls(
     if(details) AlertDialog(onDismissRequest={details=false},title={Text("Control details")},
         text={Text(error ?: callError ?: "No current error")},
         confirmButton={TextButton(onClick={details=false}){Text("Close")}})
-    if(settings) AlertDialog(
-        onDismissRequest={settings=false},title={Text("Camera settings")},
-        text={Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            val sections = if (sarosDriveTest && cameraGamepadSupported) CameraSettingsSection.entries
-                else CameraSettingsSection.entries.filter {it!=CameraSettingsSection.CONTROLLER}
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                sections.filter {it!=CameraSettingsSection.DIAGNOSTICS}.forEach {section ->
-                    FilterChip(selected=settingsSection==section,onClick={settingsSection=section},
-                        label={Text(section.label,style=MaterialTheme.typography.labelSmall)})
-                }
-            }
-            when(settingsSection) {
-                CameraSettingsSection.CAMERA -> {
-                    Text("Video framing",style=MaterialTheme.typography.titleSmall)
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected=!fillVideo,onClick={fillVideo=false},label={Text("Fit")})
-                        FilterChip(selected=fillVideo,onClick={fillVideo=true},label={Text("Fill")})
-                    }
-                    Text("Fit preserves the whole frame. Fill crops the edges.",style=MaterialTheme.typography.bodySmall)
-                    if (!controlsAllowed) Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Mini-map")
-                            Text("Show last available map",style=MaterialTheme.typography.bodySmall)
-                        }
-                        Switch(checked=showMiniMap,onCheckedChange={showMiniMap=it})
-                    }
-                }
-                CameraSettingsSection.AUDIO -> {
-                    if (callsSupported) {
-                        Text(if(callActive) "Call active" else if(callBusy) "Connecting…" else "Call off",
-                            style=MaterialTheme.typography.titleSmall)
-                        callButton(Modifier.fillMaxWidth())
-                        if(callActive) {
-                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                                Text("Phone microphone",Modifier.weight(1f))
-                                Switch(checked=!microphoneMuted,onCheckedChange={voice.muteMicrophone(!it)})
-                            }
-                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                                Text("Listen to robot",Modifier.weight(1f))
-                                Switch(checked=!remoteAudioMuted,onCheckedChange={voice.muteRemoteAudio(!it)})
-                            }
-                            Text("Robot speaker volume" + (speakerVolume?.let { ": $it%" } ?: ""))
-                            Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                                listOf(25,50,75,100).forEach {value->
-                                    FilterChip(selected=speakerVolume==value,onClick={voice.setSpeakerVolume(value)},
-                                        enabled=!volumeBusy,label={Text("$value%",style=MaterialTheme.typography.labelSmall)})
-                                }
-                            }
-                        }
-                        Text("Audio is not saved. Use phone volume buttons to adjust listening volume.",style=MaterialTheme.typography.bodySmall)
-                    } else Text("Voice calls are unavailable for this connection.")
-                    callError?.let {Text(it,color=MaterialTheme.colorScheme.error)}
-                }
-                CameraSettingsSection.CONTROLLER -> {
-                    Text(if(connectedPad!=null) "Controller connected" else "No controller detected",
-                        color=if(connectedPad!=null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        style=MaterialTheme.typography.titleSmall)
-                    Text(connectedPad ?: "Pair a Bluetooth game controller in Android Settings.",style=MaterialTheme.typography.bodySmall)
-                    Text("Driving layout",style=MaterialTheme.typography.titleSmall)
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected=padLayout==CameraPadLayout.JOYSTICK,onClick={padLayout=CameraPadLayout.JOYSTICK},label={Text("Joystick")})
-                        FilterChip(selected=padLayout==CameraPadLayout.RACING,onClick={padLayout=CameraPadLayout.RACING},label={Text("Racing")})
-                    }
-                    HorizontalDivider()
-                    CameraMappingRow("A","Enable / disable driving")
-                    CameraMappingRow("Left stick",if(padLayout==CameraPadLayout.JOYSTICK) "Forward, reverse and steer" else "Steer")
-                    if(padLayout==CameraPadLayout.RACING) {
-                        CameraMappingRow("RT","Accelerate")
-                        CameraMappingRow("LT","Reverse")
-                    }
-                    CameraMappingRow("B","Stop and disable driving")
-                    Text("Move and centre the controls once, then press A. Release the stick and triggers to stop. No button needs to be held.",
-                        style=MaterialTheme.typography.bodySmall)
-                    Button(onClick={
-                        motion.release()
-                        if(cockpitMode==CockpitMode.VIEWER) cockpitMode= CockpitMode.PILOT
-                        gamepadSelected=true
-                        settings=false
-                    },enabled=connectedPad!=null && ready,modifier=Modifier.fillMaxWidth()) {Text("Use controller")}
-                }
-                CameraSettingsSection.DIAGNOSTICS -> {
-                    Text("Connection",style=MaterialTheme.typography.titleSmall)
-                    if(diagnostics.videoWidth>0 && diagnostics.videoHeight>0)
-                        Text("Received video: ${diagnostics.videoWidth} × ${diagnostics.videoHeight}")
-                    Text(diagnostics.summary)
-                    qualityError?.let {Text(it,color=MaterialTheme.colorScheme.error)}
-                    Text("Remote viewing activation",style=MaterialTheme.typography.titleSmall)
-                    Text("Activate remote viewing in the official Roborock app before switching to the local server. Activation is not available here.",
-                        style=MaterialTheme.typography.bodySmall)
-                }
-            }
-            if(settingsSection!=CameraSettingsSection.DIAGNOSTICS) {
-                HorizontalDivider()
-                TextButton(onClick={settingsSection=CameraSettingsSection.DIAGNOSTICS}) {Text("Advanced diagnostics")}
-            }
-        }},
-        confirmButton={TextButton(onClick={settings=false}){Text("Done")}},
-    )
-
+    if (settings) {
+        CameraSettingsDialog(
+            settingsSection = settingsSection,
+            onSectionChange = { settingsSection = it },
+            controlsAllowed = controlsAllowed,
+            sarosDriveTest = sarosDriveTest,
+            fillVideo = fillVideo,
+            onFillVideoChange = { fillVideo = it },
+            showMiniMap = showMiniMap,
+            onMiniMapChange = { showMiniMap = it },
+            callsSupported = callsSupported,
+            callActive = callActive,
+            callBusy = callBusy,
+            callError = callError,
+            microphoneMuted = microphoneMuted,
+            remoteAudioMuted = remoteAudioMuted,
+            speakerVolume = speakerVolume,
+            volumeBusy = volumeBusy,
+            voice = voice,
+            callButton = callButton,
+            connectedPad = connectedPad,
+            padLayout = padLayout,
+            onPadLayoutChange = { padLayout = it },
+            ready = ready,
+            onUseController = {
+                motion.release()
+                if (cockpitMode == CockpitMode.VIEWER) cockpitMode = CockpitMode.PILOT
+                gamepadSelected = true
+                settings = false
+            },
+            diagnostics = diagnostics,
+            qualityError = qualityError,
+            onDismiss = { settings = false },
+        )
+    }
 }
 
 private enum class CockpitMode { VIEWER, PILOT, MAP }
-private enum class CameraSettingsSection(val label: String) {
-    CAMERA("Camera"), AUDIO("Audio"), CONTROLLER("Controller"), DIAGNOSTICS("Diagnostics")
-}
-
-@Composable
-private fun CameraMappingRow(button: String, action: String) {
-    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,
-        horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        Text(button,Modifier.width(76.dp).clip(RoundedCornerShape(6.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant).padding(6.dp),
-            textAlign=TextAlign.Center,style=MaterialTheme.typography.labelMedium)
-        Text(action,Modifier.weight(1f),style=MaterialTheme.typography.bodySmall)
-    }
-}
-
-/** One fresh touch gesture owns one drive operation. No restart after neutral or failure. */
-@Composable
-private fun CameraPilotJoystick(motion: CameraMotionController, enabled: Boolean, modifier: Modifier) {
-    var knob by remember { mutableStateOf(Offset.Zero) }
-    Canvas(modifier.semantics {contentDescription="Hold and drag joystick to drive; release to stop"}
-        .clip(CircleShape).background(Color(0xff171c20).copy(alpha=.78f))
-        .pointerInput(motion,enabled) {
-            if (!enabled) return@pointerInput
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed=false)
-                down.consume()
-                val center=Offset(size.width/2f,size.height/2f)
-                val radius=minOf(size.width,size.height)*.36f
-                var attempted=false
-                var running=false
-                fun update(position: Offset) {
-                    val raw=(position-center)/radius.coerceAtLeast(1f)
-                    val len=sqrt(raw.x*raw.x+raw.y*raw.y)
-                    val unit=if(len>1f) raw/len else raw
-                    knob=unit
-                    if(len<.16f) {
-                        if(running) {motion.release();running=false}
-                    } else if(!attempted || running) {
-                        val throttle=if(abs(unit.y)<.14f) 0.0 else -unit.y.toDouble()
-                        val steering=if(abs(unit.x)<.14f) 0.0 else -unit.x.toDouble()
-                        if(throttle!=0.0 || steering!=0.0) {
-                            running=motion.pilotInput(throttle,steering,start=!attempted)
-                            attempted=true
-                        } else if(running) {
-                            motion.release()
-                            running=false
-                        }
-                    }
-                }
-                try {
-                    update(down.position)
-                    while(true) {
-                        val event=awaitPointerEvent()
-                        val change=event.changes.firstOrNull {it.id==down.id} ?: break
-                        if(!change.pressed || event.changes.count {it.pressed}>1) break
-                        if(change.isConsumed) break
-                        update(change.position)
-                        change.consume()
-                    }
-                } finally { motion.release(); knob=Offset.Zero }
-            }
-        }) {
-        val r=size.minDimension/2f
-        val tint=if(enabled) Color.White else Color.Gray
-        drawCircle(tint.copy(alpha=.45f),r*.92f,style=Stroke(1.5.dp.toPx()))
-        drawCircle(tint.copy(alpha=.25f),r*.70f,style=Stroke(1.dp.toPx()))
-        val c=center
-        for (v in listOf(Offset(0f,-1f),Offset(0f,1f),Offset(-1f,0f),Offset(1f,0f))) {
-            drawLine(tint,c+v*(r*.78f),c+v*(r*.88f),strokeWidth=2.dp.toPx())
-        }
-        drawCircle(Color(0xff64747d),r*.31f,c+knob*(r*.70f))
-        drawCircle(tint.copy(alpha=.8f),r*.31f,c+knob*(r*.70f),style=Stroke(1.dp.toPx()))
-    }
-}
-
-@Composable
-private fun CameraDrivePad(motion: CameraMotionController, enabled: Boolean, modifier: Modifier, includeDockStop: Boolean = true) {
-    val scope=rememberCoroutineScope()
-    Box(modifier.clip(CircleShape).background(Color(0xff242424).copy(alpha=.55f))) {
-        val keys=listOf(
-            Triple(CameraMotionController.Direction.FORWARD,Alignment.TopCenter,Icons.Default.KeyboardArrowUp),
-            Triple(CameraMotionController.Direction.BACKWARD,Alignment.BottomCenter,Icons.Default.KeyboardArrowDown),
-            Triple(CameraMotionController.Direction.LEFT,Alignment.CenterStart,Icons.Default.RotateLeft),
-            Triple(CameraMotionController.Direction.RIGHT,Alignment.CenterEnd,Icons.Default.RotateRight),
-        )
-        keys.forEach { (direction,align,icon) ->
-            val label=when(direction){
-                CameraMotionController.Direction.FORWARD -> "Drive forward"
-                CameraMotionController.Direction.BACKWARD -> "Drive backward"
-                CameraMotionController.Direction.LEFT -> "Turn left"
-                CameraMotionController.Direction.RIGHT -> "Turn right"
-            }
-            Box(Modifier.align(align).fillMaxSize(.32f)
-                .semantics { contentDescription=label; onClick {
-                    if(enabled) scope.launch { motion.hold(direction);delay(250);motion.release() }
-                    enabled
-                } }
-                .pointerInput(enabled,direction) {
-                    if(enabled) detectTapGestures(onPress={
-                        motion.hold(direction)
-                        try { tryAwaitRelease() } finally { motion.release() }
-                    })
-                },contentAlignment=Alignment.Center) {
-                Icon(icon,label,Modifier.size(34.dp),tint=if(enabled) Color.White else Color.Gray)
-            }
-        }
-        FilledTonalIconButton(onClick={motion.stop(includeDock=includeDockStop)},modifier=Modifier.align(Alignment.Center).fillMaxSize(.27f)) {
-            Icon(Icons.Default.Stop,"Stop movement")
-        }
-    }
-}
-
-/** Only actual floor cells are eligible, with the same Y inversion as the normal map. */
-internal fun cameraTargetAt(map: ParsedMap, normalized: Offset): Pair<Int,Int>? {
-    if(map.format!=MapFormat.LEGACY || !normalized.x.isFinite() || !normalized.y.isFinite()) return null
-    if(normalized.x !in 0f..<1f || normalized.y !in 0f..<1f) return null
-    val x=(normalized.x*map.width).toInt()
-    val y=map.height-1-(normalized.y*map.height).toInt()
-    val cell=map.grid.getOrNull(y*map.width+x)?.toInt()?.and(255) ?: return null
-    val original = map.originalGrid?.getOrNull(y*map.width+x)?.toInt()?.and(255)
-    val scannedRoom = if (original != null) original and 7 == 7 && original ushr 3 > 0 else cell in 1..126
-    if (cell == 127 || (cell != 128 && !scannedRoom)) return null
-    val point=map.cellToMm(Offset(normalized.x*map.width,normalized.y*map.height))
-    if(point.first !in 0..51_200 || point.second !in 0..51_200) return null
-    if(map.noGoZones.any { it.contains(point.first,point.second) }) return null
-    return point
-}
-
-@Composable
-private fun CameraTargetMap(map: ParsedMap,floor:Int,target:Pair<Int,Int>?,enabled:Boolean,onTarget:(Pair<Int,Int>)->Unit,modifier:Modifier,gestures:Boolean=true) {
-    val bitmap=rememberMapBitmap(map)
-    val viewport=remember { LiveMapViewport() }
-    val identity = map.viewportIdentity(floor)
-    val bounds = remember(identity) { map.contentBoundsNorm() }
-    LaunchedEffect(identity) { viewport.frameIfNeeded(identity) }
-    val currentMap by rememberUpdatedState(map)
-    val selected by rememberUpdatedState(onTarget)
-    fun viewFor(size: Size): MapView {
-        val fit = fitScale(size.width, size.height, bounds.width * bitmap.width,
-            bounds.height * bitmap.height, 0f, 1f, false)
-        return framedView(size.width, size.height,
-            (bounds.left + bounds.right) / 2f * bitmap.width, (bounds.top + bounds.bottom) / 2f * bitmap.height,
-            fit, viewport.zoom, viewport.pan, 0f, 1f)
-    }
-    val currentViewFor by rememberUpdatedState(::viewFor)
-    val drawn = remember { DrawnView() }
-    Canvas(modifier.clipToBounds()
-        .pointerInput(identity,gestures) { if (gestures) detectTransformGestures { center, pan, zoom, _ ->
-            val next = (viewport.zoom * zoom).coerceIn(0.4f, 8f)
-            val view = drawn.forHitTest { currentViewFor(size.toSize()) }
-            val fit = view.k / viewport.zoom
-            val canvasCenter = Offset(size.width / 2f, size.height / 2f)
-            val moved = (center - canvasCenter) -
-                ((center - canvasCenter) - viewport.pan * fit) * (next / viewport.zoom) + pan
-            viewport.pan = Offset(moved.x.coerceIn(-size.width.toFloat(), size.width.toFloat()),
-                moved.y.coerceIn(-size.height.toFloat(), size.height.toFloat())) / fit
-            viewport.zoom = next
-        }}
-        .pointerInput(identity, enabled) { if (enabled) detectTapGestures(
-            onDoubleTap = { viewport.reset() },
-            onTap = { p ->
-                val view = drawn.forHitTest { currentViewFor(size.toSize()) }
-                val local = view.toBitmap(p.x, p.y)
-                cameraTargetAt(currentMap, Offset(local.x / bitmap.width, local.y / bitmap.height))?.let(selected)
-            },
-        ) }) {
-        val view = viewFor(size)
-        drawn.view = view
-        val origin = view.toScreen(0f, 0f)
-        withTransform({ translate(origin.x, origin.y); scale(view.k, view.k, pivot = Offset.Zero) }) {
-            drawImage(bitmap, srcOffset = IntOffset.Zero, srcSize = IntSize(bitmap.width, bitmap.height),
-                dstOffset = IntOffset.Zero, dstSize = IntSize(bitmap.width, bitmap.height), filterQuality = FilterQuality.None)
-            target?.let {
-                val p = map.mmToCanvas(it.first, it.second, bitmap.width.toFloat(), bitmap.height.toFloat())
-                drawCircle(Color.White, 10.dp.toPx() / view.k, p, style = Stroke(3.dp.toPx() / view.k))
-                drawCircle(Color(0xff3185ff), 5.dp.toPx() / view.k, p)
-            }
-        }
-    }
-}
