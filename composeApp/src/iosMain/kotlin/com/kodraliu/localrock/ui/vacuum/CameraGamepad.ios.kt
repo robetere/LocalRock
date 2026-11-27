@@ -9,4 +9,4 @@ internal actual val cameraGamepadSupported: Boolean = false
 internal actual fun cameraConnectedGamepad(): String? = null
 
 @Composable
-internal actual fun CameraGamepadSession(motion: CameraMotionController, enabled: Boolean, layout: CameraPadLayout, enableButton: CameraPadEnable): String = "Controller unavailable"
+internal actual fun CameraGamepadSession(motion: CameraMotionController, enabled: Boolean, layout: CameraPadLayout): String = "Controller unavailable"

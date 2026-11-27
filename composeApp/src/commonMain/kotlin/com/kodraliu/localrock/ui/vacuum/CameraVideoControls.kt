@@ -87,16 +87,14 @@ internal fun CameraVideoControls(
     var cockpitMode by remember { mutableStateOf(CockpitMode.VIEWER) }
     var details by remember { mutableStateOf(false) }
     var gamepadSelected by remember { mutableStateOf(false) }
-    var padLayout by remember { mutableStateOf(CameraPadLayout.JOYSTICK) }
-    var padEnable by remember { mutableStateOf(CameraPadEnable.LEFT_BUMPER) }
+    var padLayout by remember { mutableStateOf(CameraPadLayout.RACING) }
     var settingsSection by remember { mutableStateOf(CameraSettingsSection.CAMERA) }
     val connectedPad = cameraConnectedGamepad()
-    val holdLabel = if (padEnable == CameraPadEnable.A) "A" else "LB"
     val mapMode = sarosDriveTest && cockpitMode == CockpitMode.MAP
     val showDriveTest = cockpitMode == CockpitMode.PILOT || mapMode
     fun changeMode(mode: CockpitMode) { motion.release(); gamepadSelected=false; cockpitMode = mode }
     val gamepadStatus = CameraGamepadSession(motion, sarosDriveTest && showDriveTest && gamepadSelected && ready && !callBusy && !settings && !details,
-        padLayout, padEnable)
+        padLayout)
     var mapExpanded by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
     var interaction by remember { mutableStateOf(0) }
@@ -465,20 +463,15 @@ internal fun CameraVideoControls(
                         FilterChip(selected=padLayout==CameraPadLayout.JOYSTICK,onClick={padLayout=CameraPadLayout.JOYSTICK},label={Text("Joystick")})
                         FilterChip(selected=padLayout==CameraPadLayout.RACING,onClick={padLayout=CameraPadLayout.RACING},label={Text("Racing")})
                     }
-                    Text("Hold to enable",style=MaterialTheme.typography.titleSmall)
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected=padEnable==CameraPadEnable.LEFT_BUMPER,onClick={padEnable=CameraPadEnable.LEFT_BUMPER},label={Text("LB")})
-                        FilterChip(selected=padEnable==CameraPadEnable.A,onClick={padEnable=CameraPadEnable.A},label={Text("A")})
-                    }
                     HorizontalDivider()
-                    CameraMappingRow(holdLabel,"Hold to drive · release to stop")
+                    CameraMappingRow("A","Enable / disable driving")
                     CameraMappingRow("Left stick",if(padLayout==CameraPadLayout.JOYSTICK) "Forward, reverse and steer" else "Steer")
                     if(padLayout==CameraPadLayout.RACING) {
                         CameraMappingRow("RT","Accelerate")
                         CameraMappingRow("LT","Reverse")
                     }
-                    CameraMappingRow("B","Stop")
-                    Text("Move and centre the controls once, then hold $holdLabel to drive. No movement on connection.",
+                    CameraMappingRow("B","Stop and disable driving")
+                    Text("Move and centre the controls once, then press A. Release the stick and triggers to stop. No button needs to be held.",
                         style=MaterialTheme.typography.bodySmall)
                     Button(onClick={
                         motion.release()

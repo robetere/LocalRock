@@ -4,11 +4,10 @@ import androidx.compose.runtime.Composable
 import com.kodraliu.localrock.shared.vacuum.camera.CameraMotionController
 
 internal enum class CameraPadLayout { JOYSTICK, RACING }
-internal enum class CameraPadEnable { LEFT_BUMPER, A }
 internal expect val cameraGamepadSupported: Boolean
 
 @Composable
 internal expect fun cameraConnectedGamepad(): String?
 
 @Composable
-internal expect fun CameraGamepadSession(motion: CameraMotionController, enabled: Boolean, layout: CameraPadLayout, enableButton: CameraPadEnable): String
+internal expect fun CameraGamepadSession(motion: CameraMotionController, enabled: Boolean, layout: CameraPadLayout): String
