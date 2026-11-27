@@ -175,6 +175,7 @@ internal fun CameraVideoControls(
         val wide = expanded && landscape
         val overlayInsets = if (expanded) WindowInsets.safeDrawing else WindowInsets(0, 0, 0, 0)
         val portraitVideoHeight = maxHeight * .43f
+        val miniMapSize = minOf(maxWidth * .35f, maxHeight * .25f, 156.dp)
         val videoModifier = if (expanded || !controlsAllowed) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(portraitVideoHeight)
         // Keep one native renderer composition site through expansion, rotation and map changes.
         Box(videoModifier.background(Color.Black).clipToBounds()) {
@@ -236,10 +237,9 @@ internal fun CameraVideoControls(
             }
             // Experimental models may inspect the last available map, but cannot issue a target.
             if (!controlsAllowed && showMiniMap) {
-                val mapSize = minOf(maxWidth * .35f, maxHeight * .25f, 156.dp)
                 Box(Modifier.align(Alignment.CenterStart)
                     .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Start))
-                    .padding(start=8.dp).size(mapSize)
+                    .padding(start=8.dp).size(miniMapSize)
                     .background(Color(0xffe9edf1)),contentAlignment=Alignment.Center) {
                     val currentMap = map
                     if (currentMap == null) Text("Map unavailable",color=Color.DarkGray,
