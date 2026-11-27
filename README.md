@@ -40,22 +40,37 @@ The camera interface is an extension of LocalRock rather than a separate embedde
 
 ## Screenshots
 
-### Camera development previews
+### Camera cockpit — HONOR Magic V5
 
-These genuine Android screenshots show earlier stages of the fork. They illustrate the evolution of the camera interface, not the exact current build. Device status bars have been cropped; the camera feed and map content remain real.
+Current development screenshots supplied by the fork maintainer, captured on the Saros 10R. The phone's system status and navigation bars have been cropped for presentation; the application interface, video and floor plan are genuine.
 
-| Pilot — compact display | Map — compact display |
+**Unfolded inner display**
+
+| View mode | Pilot mode |
 | :---: | :---: |
-| <img src="docs/screenshots/camera/pilot-cover.jpg" alt="Early Pilot mode with analogue joystick" width="270"> | <img src="docs/screenshots/camera/map-cover.jpg" alt="Early Map mode with live video and floor plan" width="270"> |
-| Early joystick layout, before removal of the separate Stop button. | Early split view, before addition of manual driving controls to Map mode. |
+| <img src="docs/screenshots/camera/view-inner.jpg" alt="Unfolded camera View mode with minimap" width="440"> | <img src="docs/screenshots/camera/pilot-inner.jpg" alt="Unfolded Pilot mode with analogue joystick and controller selector" width="440"> |
+| Camera-first monitoring with optional minimap. | Touch driving with proportional steering. |
 
-<p align="center">
-  <img src="docs/screenshots/camera/view-inner.jpg" alt="Early camera viewing on a wide unfolded display" width="560">
-</p>
+| Map mode — 2D | Map mode — 3D |
+| :---: | :---: |
+| <img src="docs/screenshots/camera/map-2d-inner.jpg" alt="Unfolded Map mode with 2D floor plan and manual controls" width="440"> | <img src="docs/screenshots/camera/map-3d-inner.jpg" alt="Unfolded Map mode with zoomed 3D floor plan and side controls" width="440"> |
+| Live video and read-only floor plan. | Zoomed 3D map, room labels and reserved side controls. |
 
-*Earlier wide-screen camera baseline on the unfolded HONOR Magic V5; the old compatibility banner is historical.*
+**Folded cover display**
 
-See the [camera screenshot gallery](docs/screenshots/camera/README.md) for capture notes. Current-build screenshots of controller input, unfolded Map mode and Android voice controls remain pending.
+| Touch Pilot | Controller Pilot | Controller settings |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/camera/pilot-cover.jpg" alt="Cover-screen Pilot with touch joystick" width="240"> | <img src="docs/screenshots/camera/controller-pilot.jpg" alt="Controller input selected, touch joystick hidden" width="240"> | <img src="docs/screenshots/camera/controller-settings.jpg" alt="Connected Xbox Wireless Controller with Racing and Joystick layout settings" width="240"> |
+| Compact joystick and minimap. | Touch controls hidden; return to touch at any time. | Controller recognition and selectable input layouts. |
+
+**Camera, audio and authentication**
+
+| Camera settings | Active Android voice call | Biometric setup |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/camera/camera-settings.jpg" alt="Camera settings with Fit Fill and minimap" width="240"> | <img src="docs/screenshots/camera/audio-settings.jpg" alt="Active two-way call with independent audio switches and volume presets" width="240"> | <img src="docs/screenshots/camera/biometric-setup.jpg" alt="Pattern entry with optional fingerprint credential storage; no credential displayed" width="240"> |
+| Framing and optional minimap. | Microphone, incoming audio and speaker volume. | Opt-in encrypted credential storage. |
+
+These captures demonstrate the UI on both display sizes; they do not by themselves establish successful fold/unfold transitions or complete hardware regression coverage. [Screenshot notes](docs/screenshots/camera/README.md).
 
 ### Original LocalRock screenshots
 

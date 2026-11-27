@@ -1,11 +1,18 @@
 # Camera development screenshot gallery
 
-Genuine captures from earlier Android development builds. Device status bars were cropped; these are not generated mock-ups. The camera feed and floor plan are real.
+Ten genuine screenshots supplied by the fork maintainer on 27 November 2026, using the HONOR Magic V5 and Saros 10R. System bars were cropped and wide images resized for documentation; no UI was generated or substituted. The precise build commit was not recorded.
 
-| Capture | Description |
+| Screenshot | What it shows |
 | --- | --- |
-| [Pilot, compact display](pilot-cover.jpg) | Early analogue joystick layout with the subsequently removed Stop button |
-| [Map, compact display](map-cover.jpg) | Early split live-video/map layout before manual controls were added to Map mode |
-| [Wide display](view-inner.jpg) | Earlier unfolded-display camera baseline; compatibility banner reflects that historical build |
+| [View — inner display](view-inner.jpg) | Live video and minimap |
+| [Pilot — inner display](pilot-inner.jpg) | Touch joystick and controller selector |
+| [Map — inner display, 2D](map-2d-inner.jpg) | Live video, read-only map and driving controls |
+| [Map — inner display, 3D](map-3d-inner.jpg) | Zoomed 3D map with room labels and side controls |
+| [Pilot — cover display](pilot-cover.jpg) | Compact joystick and minimap |
+| [Controller Pilot](controller-pilot.jpg) | Controller selected; manual-control setup in progress |
+| [Controller settings](controller-settings.jpg) | Connected Xbox Wireless Controller, Racing and Joystick layouts |
+| [Camera settings](camera-settings.jpg) | Fit/Fill, minimap and diagnostics |
+| [Audio settings](audio-settings.jpg) | Active call, microphone and incoming-audio switches, speaker volume |
+| [Biometric setup](biometric-setup.jpg) | Optional fingerprint-protected credential storage; no PIN or pattern shown |
 
-These images are illustrative, not evidence of the current commit passing hardware acceptance. New captures should show current View, Pilot, Map, Xbox controller, voice call and folded/unfolded layouts. See [hardware acceptance](../../camera-hardware-acceptance.md).
+See the [README gallery](../../../README.md#screenshots) and [hardware acceptance procedure](../../camera-hardware-acceptance.md). These images demonstrate the interface, not complete safety or compatibility validation.
