@@ -93,7 +93,7 @@ private class AndroidPadMonitor {
 
     private fun axis(event: MotionEvent, vararg candidates: Int, trigger: Boolean = false): Double {
         val device = event.device ?: return 0.0
-        val range = candidates.firstNotNullOfOrNull {
+        val range = candidates.asSequence().firstNotNullOfOrNull {
             device.getMotionRange(it, event.source) ?: device.getMotionRange(it)
         } ?: return 0.0
         val raw = event.getAxisValue(range.axis).toDouble()
