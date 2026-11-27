@@ -63,7 +63,11 @@ class CameraMotionController internal constructor(
     // These are requested speeds, not measured chassis speeds.
     fun pilotInput(throttle: Double, steering: Double, start: Boolean): Boolean {
         if (!experimentalDriveOnly || !controlsAllowed) return false
-        val vector = SarosManualDriveProfile.analogue(throttle, steering) ?: return false
+        val vector = SarosManualDriveProfile.analogue(throttle, steering) ?: run {
+            // Never keep repeating the last valid movement after a malformed input.
+            release()
+            return false
+        }
         if (throttle == 0.0 && steering == 0.0) { release(); return false }
         if (!start && (!holding || job == null)) return false
         if (start && (disposed || job != null || haltJob != null)) return false

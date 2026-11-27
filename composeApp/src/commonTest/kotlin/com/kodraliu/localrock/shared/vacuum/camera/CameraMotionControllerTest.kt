@@ -151,6 +151,26 @@ class CameraMotionControllerTest {
         c.dispose(); advanceUntilIdle()
     }
 
+    @Test fun saros_invalid_analogue_update_stops_without_replaying_previous_vector() = runTest {
+        for ((throttle, steering) in listOf(Double.NaN to 0.0, 0.0 to Double.POSITIVE_INFINITY, 1.01 to 0.0)) {
+            val rpc = Rpc()
+            val c = CameraMotionController(rpc, { true },
+                CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
+                experimentalDriveOnly = true)
+            assertTrue(c.pilotInput(1.0, 0.0, start = true))
+            runCurrent()
+            val count = rpc.methods().count { it == "app_rc_move" }
+            assertTrue(count > 0)
+            assertFalse(c.pilotInput(throttle, steering, start = false))
+            advanceTimeBy(1_000); runCurrent()
+            assertEquals(count, rpc.methods().count { it == "app_rc_move" })
+            assertEquals(listOf("app_rc_stop", "app_rc_end"), rpc.methods().takeLast(2))
+            assertFalse(c.manualMode.value)
+            assertFalse(c.pilotInput(.5, 0.0, start = false))
+            c.dispose(); advanceUntilIdle()
+        }
+    }
+
     @Test fun saros_can_enter_manual_mode_from_charging() = runTest {
         val rpc = Rpc().apply {state=8}
         val c = CameraMotionController(rpc,{true},

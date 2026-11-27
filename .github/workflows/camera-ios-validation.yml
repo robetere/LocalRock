@@ -1,0 +1,31 @@
+name: Camera iOS compilation
+on:
+  push:
+    branches: [feature/camera-support]
+    paths:
+      - 'composeApp/**'
+      - 'iosApp/**'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - 'settings.gradle.kts'
+      - '.github/workflows/camera-ios-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-compile:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile shared Kotlin for iOS device and simulator
+        run: bash ./gradlew --no-daemon --no-configuration-cache :composeApp:compileKotlinIosArm64 :composeApp:compileKotlinIosSimulatorArm64

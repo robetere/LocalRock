@@ -54,6 +54,12 @@ credentials. Do not publish sensitive screenshots without review.
 - [ ] Android voice-call controls
 - [ ] Optional short Xbox controller demonstration
 
+## Optional biometric credentials
+
+Android 11+ devices with a strong enrolled biometric can opt in to encrypted
+camera credential storage. See [credential design and limitations](camera-biometric-credentials.md).
+This is separate from camera compatibility and should be reviewed independently.
+
 ## Contribution scope
 
 Discuss scope with upstream maintainers before preparing independently reviewable

@@ -1,5 +1,9 @@
 # Camera live view
 
+> This page describes the upstream camera implementation. For this development
+> branch's additional Android, Saros 10R, controller, foldable and biometric
+> functionality, see [the camera fork overview](camera-fork-overview.md).
+
 LocalRock displays live camera video through its existing MQTT connection and
 the local server's camera and TURN support. S7 MaxV is the only model tested with
 LocalRock's video implementation. Other recognized models with official Roborock
