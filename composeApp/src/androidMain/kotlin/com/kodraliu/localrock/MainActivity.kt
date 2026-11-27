@@ -77,12 +77,12 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
-        if (CameraGamepadBridge.motion(event)) return true
+        if (hasWindowFocus() && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && CameraGamepadBridge.motion(event)) return true
         return super.dispatchGenericMotionEvent(event)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (CameraGamepadBridge.key(event)) return true
+        if (hasWindowFocus() && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && CameraGamepadBridge.key(event)) return true
         return super.dispatchKeyEvent(event)
     }
 

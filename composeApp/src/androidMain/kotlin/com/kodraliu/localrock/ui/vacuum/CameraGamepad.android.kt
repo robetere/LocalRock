@@ -8,7 +8,6 @@ import androidx.compose.runtime.*
 import com.kodraliu.localrock.shared.vacuum.camera.CameraMotionController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlin.math.abs
 
 internal actual val cameraGamepadSupported: Boolean = true
 
@@ -66,26 +65,19 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
     var status by mutableStateOf("Move and centre controls to initialise")
         private set
     private var deviceId: Int? = null
-    private var neutralSeen = false
-    private var armed = false
-    private var running = false
-    private var lastInput = 0L
-    private var steering = 0.0
-    private var throttle = 0.0
-    private var conflict = false
-    private val staleMs = 1500L
+    private val state = CameraGamepadState(
+        busy = { motionController.busy.value },
+        move = { input, start -> motionController.pilotInput(input.throttle, input.steering, start) },
+        release = motionController::release,
+    )
+
+    private fun publishStatus() { status = state.status }
 
     private fun select(id: Int): Boolean {
         if (deviceId != null && deviceId != id) return false
         if (deviceId == null && connectedPads().none { it.id == id }) return false
         deviceId = id
         return true
-    }
-
-    private fun deadzone(value: Double, dead: Double): Double {
-        if (abs(value) <= dead) return 0.0
-        val magnitude = (abs(value) - dead) / (1.0 - dead)
-        return if (value < 0.0) -magnitude else magnitude
     }
 
     private fun trigger(event: MotionEvent, primary: Int, fallback: Int): Double? {
@@ -112,41 +104,10 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
             reset("Unsupported controller axes · release controls")
             return true
         }
-        lastInput = SystemClock.uptimeMillis()
-        steering = -deadzone(x.coerceIn(-1.0, 1.0), .15)
-        conflict = layout == CameraPadLayout.RACING && left > .08 && right > .08
-        throttle = if (conflict) 0.0 else if (layout == CameraPadLayout.JOYSTICK)
-            -deadzone(y.coerceIn(-1.0, 1.0), .15) else deadzone(right, .08) - deadzone(left, .08)
-        val neutral = !conflict && steering == 0.0 && throttle == 0.0
-        if (conflict) {
-            stop("Release both triggers · press A to re-enable")
-            neutralSeen = false
-            return true
-        }
-        if (neutral) {
-            neutralSeen = true
-            if (running) motionController.release()
-            running = false
-            status = if (armed) "Controller ready · move to drive" else "Press A to enable driving"
-        } else if (armed) {
-            // Never queue a fresh movement while a previous stop is still being confirmed.
-            if (!running && motionController.busy.value) {
-                stop("Previous drive stopping · centre controls and press A")
-                neutralSeen = false
-                return true
-            }
-            val accepted = motionController.pilotInput(throttle, steering, start = !running)
-            if (!accepted) {
-                stop("Drive unavailable · centre controls and press A")
-                neutralSeen = false
-            } else {
-                running = true
-                status = "Controller driving · release controls to stop"
-            }
-        } else {
-            neutralSeen = false
-            status = "Centre controls, then press A"
-        }
+        val input = cameraPadInput(layout, x, y, left, right)
+        if (input == null) state.disarm("Invalid controller axes · centre controls and press A")
+        else state.input(input, event.eventTime, SystemClock.uptimeMillis())
+        publishStatus()
         return true
     }
 
@@ -157,15 +118,10 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
         if (event.keyCode != KeyEvent.KEYCODE_BUTTON_A && event.keyCode != KeyEvent.KEYCODE_BUTTON_B) return false
         if (!select(event.deviceId)) return false
         if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) return true
-        if (event.keyCode == KeyEvent.KEYCODE_BUTTON_B || armed) {
-            stop("Controller disabled · press A to enable")
-            return true
-        }
-        if (neutralSeen && !conflict && steering == 0.0 && throttle == 0.0 &&
-            !motionController.busy.value) {
-            armed = true
-            status = "Controller ready · move to drive"
-        } else status = "Centre controls first, then press A"
+        val age = SystemClock.uptimeMillis() - event.eventTime
+        if (event.keyCode == KeyEvent.KEYCODE_BUTTON_B || age !in 0 until 1_500L) state.disarm()
+        else state.toggle()
+        publishStatus()
         return true
     }
 
@@ -175,30 +131,13 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
             reset("Controller disconnected")
             return
         }
-        if (running && SystemClock.uptimeMillis() - lastInput > staleMs) {
-            stop("Input stale · centre controls and press A")
-            neutralSeen = false
-        }
-        if (running && !motionController.busy.value) {
-            stop("Drive ended · centre controls and press A")
-            neutralSeen = false
-        }
-    }
-
-    private fun stop(message: String) {
-        if (running || armed) motionController.release()
-        running = false
-        armed = false
-        status = message
+        state.tick(SystemClock.uptimeMillis())
+        publishStatus()
     }
 
     fun reset(message: String) {
-        stop(message)
+        state.disarm(message)
         deviceId = null
-        neutralSeen = false
-        lastInput = 0L
-        steering = 0.0
-        throttle = 0.0
-        conflict = false
+        publishStatus()
     }
 }
