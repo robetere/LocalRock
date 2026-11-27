@@ -86,8 +86,8 @@ class CameraMotionControllerTest {
         }
     }
 
-    @Test fun saros_test_refuses_docked_returning_and_existing_manual_sessions() = runTest {
-        for ((state, returning) in listOf(8 to 0, 3 to 1, 7 to 0)) {
+    @Test fun saros_test_refuses_returning_and_existing_manual_sessions() = runTest {
+        for ((state, returning) in listOf(6 to 0, 3 to 1, 7 to 0)) {
             val rpc = Rpc().apply { this.state=state; this.returning=returning }
             val c = CameraMotionController(rpc,{true},
                 CoroutineScope(SupervisorJob()+StandardTestDispatcher(testScheduler)),
@@ -97,6 +97,18 @@ class CameraMotionControllerTest {
             assertNotNull(c.error.value)
             c.dispose(); advanceUntilIdle()
         }
+    }
+
+    @Test fun saros_can_enter_manual_mode_from_charging() = runTest {
+        val rpc = Rpc().apply {state=8}
+        val c = CameraMotionController(rpc,{true},
+            CoroutineScope(SupervisorJob()+StandardTestDispatcher(testScheduler)),
+            experimentalDriveOnly = true)
+        c.hold(CameraMotionController.Direction.FORWARD); runCurrent()
+        advanceTimeBy(250); runCurrent(); c.release(); advanceUntilIdle()
+        assertTrue("app_rc_move" in rpc.methods())
+        assertEquals(listOf("app_rc_stop","app_rc_end"),rpc.methods().takeLast(2))
+        c.dispose(); advanceUntilIdle()
     }
 
     @Test fun saros_drive_only_never_issues_cleaning_navigation_or_dock_commands() = runTest {

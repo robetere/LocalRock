@@ -237,7 +237,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
                             Spacer(Modifier.width(8.dp))
                             Text("Enable video and audio testing for this robot")
                         }
-                        Text(if (sarosDriveTest) "Video testing includes an optional low-speed manual driving test. Start off the dock, keep the robot in sight and release the controls to stop. Cleaning and map navigation remain disabled."
+                        Text(if (sarosDriveTest) "Video testing includes an optional low-speed manual driving test. Keep the robot in sight and release the controls to stop. When charging, hold Forward to test leaving the dock. Cleaning and map navigation remain disabled."
                             else "Testing enables video viewing and audio calls on iPhone. Driving and cleaning controls are unavailable on this model.",
                             style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
                         TextButton(onClick = { uriHandler.openUri("https://github.com/DonSidro/LocalRock/pull/95") }) {

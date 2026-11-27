@@ -121,8 +121,8 @@ internal fun CameraVideoControls(
         }
     }
     LaunchedEffect(expanded) { if (!expanded) mapExpanded = false }
-    LaunchedEffect(ready, docked, settings) {
-        if (!ready || docked || settings) { showDriveTest = false; motion.release() }
+    LaunchedEffect(ready, settings) {
+        if (!ready || settings) { showDriveTest = false; motion.release() }
     }
     LaunchedEffect(viewModel, ready, status.state) {
         if (controlsAllowed && ready && status.state == VacuumStateCodes.REMOTE_CONTROL_ACTIVE) {
@@ -256,7 +256,7 @@ internal fun CameraVideoControls(
         if (!controlsAllowed) {
             if (sarosDriveTest && showDriveTest && !settings) {
                 // The pad remains above the video footer on folded and unfolded displays.
-                CameraDrivePad(motion,ready && !docked,
+                CameraDrivePad(motion,ready,
                     Modifier.align(Alignment.BottomStart)
                         .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Start))
                         .padding(start=12.dp,bottom=140.dp)
@@ -269,13 +269,13 @@ internal fun CameraVideoControls(
                 horizontalAlignment=Alignment.CenterHorizontally) {
                 Text(if (sarosDriveTest) {
                     if (showDriveTest) "Saros drive test · hold to move, release to stop"
-                    else "Saros camera · experimental"
+                    else if (docked) "Saros camera · Drive can leave the dock" else "Saros camera · experimental"
                 } else "Experimental video and audio · tested only on S7 MaxV",
                     color=Color.White, textAlign=TextAlign.Center)
                 Row(verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                     if (sarosDriveTest) TextButton(
                         onClick={motion.release();showDriveTest=!showDriveTest},
-                        enabled=showDriveTest || (ready && !docked && !busy)
+                        enabled=showDriveTest || (ready && !busy)
                     ) { Text(if (showDriveTest) "Hide drive" else "Drive",color=Color.White) }
                     callIconButton(Modifier)
                     TextButton(onClick=onStopVideo) { Text("End video",color=Color.White) }
@@ -385,7 +385,7 @@ internal fun CameraVideoControls(
                     }
                 }
                 Text("Use your phone's volume buttons for the sound you hear. Calls are experimental and audio is not saved.")
-            } else Text("Voice calls are available in the iPhone test build once video connects.")
+            } else Text("Voice calls are not supported by this video connection.")
             callError?.let {Text(it,color=MaterialTheme.colorScheme.error)}
             Button(onClick={},enabled=false,modifier=Modifier.fillMaxWidth()) {Text("Activate Remote Viewing")}
             Button(onClick={},enabled=false,modifier=Modifier.fillMaxWidth()) {Text("Deactivate Remote Viewing")}

@@ -78,7 +78,8 @@ class CameraMotionController internal constructor(
                 }
                 currentCoroutineContext().ensureActive()
                 _progress.value = "Waiting for manual control…"
-                waitForDriveState("Waiting for manual control", manualStates, idleStates)
+                waitForDriveState("Waiting for manual control",
+                    if (experimentalDriveOnly) setOf(7) else manualStates, idleStates)
                 entered = true
                 _progress.value = null
                 while (currentCoroutineContext().isActive) {
@@ -115,8 +116,8 @@ class CameraMotionController internal constructor(
         _progress.value = "Checking robot…"
         var status = readStatus()
         requireNoTask(status)
-        if (experimentalDriveOnly && (status.state() != 3 || status.number("in_returning") != 0 || _manualMode.value))
-            throw MotionFailure("Saros drive test requires an idle robot off the dock, with no active manual session.")
+        if (experimentalDriveOnly && (status.state() !in setOf(3, 8, 100) || status.number("in_returning") != 0 || _manualMode.value))
+            throw MotionFailure("Saros drive test requires an idle or charging robot, with no active manual or return-to-dock session.")
         if (status.state() == VacuumStateCodes.GOING_TO_TARGET && navigationRequested) {
             requireReady()
             _progress.value = "Stopping Pin-and-Go…"
@@ -137,6 +138,8 @@ class CameraMotionController internal constructor(
             while (true) {
                 requireReady()
                 requireNoTask(status)
+                if (experimentalDriveOnly && status.number("in_returning") != 0)
+                    throw MotionFailure("Robot is returning to the dock or its return status is unavailable.")
                 if (status.state() in accepted) break
                 if (status.state() !in pending) throw stateFailure(status)
                 delay(100)
