@@ -12,20 +12,37 @@ import kotlin.math.abs
 
 internal actual val cameraGamepadSupported: Boolean = true
 
+private fun connectedPads() = InputDevice.getDeviceIds().mapNotNull { InputDevice.getDevice(it) }
+    .filter { !it.isVirtual && it.sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK &&
+        it.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD }
+
+@Composable
+internal actual fun cameraConnectedGamepad(): String? {
+    var name by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            val pads = connectedPads()
+            name = if (pads.size == 1) pads.single().name else if (pads.size > 1) "Multiple controllers" else null
+            delay(750)
+        }
+    }
+    return name
+}
+
 /** Only installed while the user explicitly selects Controller in Pilot mode. */
 internal object CameraGamepadBridge {
     var session: AndroidCameraGamepad? = null
     fun motion(event: MotionEvent) = session?.motion(event) == true
     fun key(event: KeyEvent) = session?.key(event) == true
-    fun reset() { session?.reset("Focus lost · release A") }
+    fun reset() { session?.reset("Focus lost · release controls") }
 }
 
 @Composable
-internal actual fun CameraGamepadSession(motion: CameraMotionController, enabled: Boolean): String {
-    val session = remember(motion) { AndroidCameraGamepad(motion) }
+internal actual fun CameraGamepadSession(motion: CameraMotionController, enabled: Boolean, layout: CameraPadLayout, enableButton: CameraPadEnable): String {
+    val session = remember(motion, layout, enableButton) { AndroidCameraGamepad(motion, layout, enableButton) }
     DisposableEffect(session, enabled) {
         if (enabled) {
-            session.reset("Move stick or triggers, then hold A")
+            session.reset("Move and centre controls to initialise")
             CameraGamepadBridge.session = session
         }
         onDispose {
@@ -44,8 +61,11 @@ internal actual fun CameraGamepadSession(motion: CameraMotionController, enabled
     return session.status
 }
 
-internal class AndroidCameraGamepad(private val motionController: CameraMotionController) {
-    var status by mutableStateOf("Move stick or triggers, then hold A")
+internal class AndroidCameraGamepad(private val motionController: CameraMotionController,
+    private val layout: CameraPadLayout, private val enableButton: CameraPadEnable) {
+    private val holdLabel = if (enableButton == CameraPadEnable.A) "A" else "LB"
+    private val holdCode = if (enableButton == CameraPadEnable.A) KeyEvent.KEYCODE_BUTTON_A else KeyEvent.KEYCODE_BUTTON_L1
+    var status by mutableStateOf("Move and centre controls to initialise")
         private set
     private var deviceId: Int? = null
     private var neutralSeen = false
@@ -61,6 +81,7 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
 
     private fun select(id: Int): Boolean {
         if (deviceId != null && deviceId != id) return false
+        if (deviceId == null && connectedPads().none { it.id == id }) return false
         deviceId = id
         return true
     }
@@ -86,36 +107,40 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
         if (event.source and InputDevice.SOURCE_JOYSTICK != InputDevice.SOURCE_JOYSTICK ||
             event.actionMasked != MotionEvent.ACTION_MOVE || !select(event.deviceId)) return false
         val x = event.getAxisValue(MotionEvent.AXIS_X).toDouble()
-        val left = trigger(event, MotionEvent.AXIS_LTRIGGER, MotionEvent.AXIS_BRAKE)
-        val right = trigger(event, MotionEvent.AXIS_RTRIGGER, MotionEvent.AXIS_GAS)
-        if (!x.isFinite() || left == null || right == null) {
-            reset("Unsupported trigger mapping · release A")
+        val y = event.getAxisValue(MotionEvent.AXIS_Y).toDouble()
+        val left = if (layout == CameraPadLayout.RACING) trigger(event, MotionEvent.AXIS_LTRIGGER, MotionEvent.AXIS_BRAKE) else 0.0
+        val right = if (layout == CameraPadLayout.RACING) trigger(event, MotionEvent.AXIS_RTRIGGER, MotionEvent.AXIS_GAS) else 0.0
+        if (!x.isFinite() || !y.isFinite() || left == null || right == null ||
+            event.device?.getMotionRange(MotionEvent.AXIS_X) == null ||
+            (layout == CameraPadLayout.JOYSTICK && event.device?.getMotionRange(MotionEvent.AXIS_Y) == null)) {
+            reset("Unsupported controller axes · release controls")
             return true
         }
         lastInput = SystemClock.uptimeMillis()
         steering = -deadzone(x.coerceIn(-1.0, 1.0), .15)
-        conflict = left > .08 && right > .08
-        throttle = if (conflict) 0.0 else deadzone(right, .08) - deadzone(left, .08)
+        conflict = layout == CameraPadLayout.RACING && left > .08 && right > .08
+        throttle = if (conflict) 0.0 else if (layout == CameraPadLayout.JOYSTICK)
+            -deadzone(y.coerceIn(-1.0, 1.0), .15) else deadzone(right, .08) - deadzone(left, .08)
         if (!aDown && !conflict && steering == 0.0 && throttle == 0.0) {
             neutralSeen = true
             blocked = false
-            status = "Hold A · RT/LT drive · stick steers"
+            status = "Hold $holdLabel to drive"
         }
         if (conflict) { stop("Release both triggers"); blocked = true; neutralSeen = false; return true }
         if (armed && aDown && !blocked) {
             if (steering == 0.0 && throttle == 0.0) {
                 if (running) motionController.release()
                 running = false
-                status = "A held · ready"
+                status = "$holdLabel held · ready"
             } else {
                 val accepted = motionController.pilotInput(throttle, steering, start = !running)
                 if (!accepted) {
-                    stop("Drive unavailable · release A")
+                    stop("Drive unavailable · release $holdLabel")
                     blocked = true
                     neutralSeen = false
                 } else {
                     running = true
-                    status = "Controller driving · release A to stop"
+                    status = "Controller driving · release $holdLabel to stop"
                 }
             }
         }
@@ -126,11 +151,11 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
         val source = event.source
         if (source and InputDevice.SOURCE_GAMEPAD != InputDevice.SOURCE_GAMEPAD &&
             source and InputDevice.SOURCE_JOYSTICK != InputDevice.SOURCE_JOYSTICK) return false
-        if (event.keyCode != KeyEvent.KEYCODE_BUTTON_A && event.keyCode != KeyEvent.KEYCODE_BUTTON_B) return false
+        if (event.keyCode != holdCode && event.keyCode != KeyEvent.KEYCODE_BUTTON_B) return false
         if (!select(event.deviceId)) return false
         if (event.keyCode == KeyEvent.KEYCODE_BUTTON_B) {
             if (event.action == KeyEvent.ACTION_DOWN) {
-                stop("Stopped · release A and controls")
+                stop("Stopped · release $holdLabel and controls")
                 blocked = true
                 neutralSeen = false
             }
@@ -138,12 +163,12 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
         }
         if (event.action == KeyEvent.ACTION_UP) {
             aDown = false
-            stop("Release controls, then hold A")
+            stop("Release controls, then hold $holdLabel")
             if (!conflict && steering == 0.0 && throttle == 0.0 &&
                 SystemClock.uptimeMillis() - lastInput <= staleMs) {
                 neutralSeen = true
                 blocked = false
-                status = "Hold A · RT/LT drive · stick steers"
+                status = "Hold $holdLabel to drive"
             }
             return true
         }
@@ -152,8 +177,8 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
             if (!blocked && neutralSeen && !conflict && steering == 0.0 && throttle == 0.0 &&
                 SystemClock.uptimeMillis() - lastInput <= staleMs) {
                 armed = true
-                status = "A held · ready"
-            } else status = "Release A and centre controls first"
+                status = "$holdLabel held · ready"
+            } else status = "Release $holdLabel and centre controls first"
         }
         return true
     }
@@ -165,12 +190,12 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
             return
         }
         if (armed && SystemClock.uptimeMillis() - lastInput > staleMs) {
-            stop("Input stale · release A and re-arm")
+            stop("Input stale · release $holdLabel and re-arm")
             blocked = true
             neutralSeen = false
         }
         if (running && !motionController.busy.value) {
-            stop("Drive ended · release A")
+            stop("Drive ended · release $holdLabel")
             blocked = true
             neutralSeen = false
         }

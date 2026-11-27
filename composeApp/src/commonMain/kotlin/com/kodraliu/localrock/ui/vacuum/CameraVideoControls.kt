@@ -87,10 +87,16 @@ internal fun CameraVideoControls(
     var cockpitMode by remember { mutableStateOf(CockpitMode.VIEWER) }
     var details by remember { mutableStateOf(false) }
     var gamepadSelected by remember { mutableStateOf(false) }
+    var padLayout by remember { mutableStateOf(CameraPadLayout.JOYSTICK) }
+    var padEnable by remember { mutableStateOf(CameraPadEnable.LEFT_BUMPER) }
+    var settingsSection by remember { mutableStateOf(CameraSettingsSection.CAMERA) }
+    val connectedPad = cameraConnectedGamepad()
+    val holdLabel = if (padEnable == CameraPadEnable.A) "A" else "LB"
     val mapMode = sarosDriveTest && cockpitMode == CockpitMode.MAP
     val showDriveTest = cockpitMode == CockpitMode.PILOT || mapMode
     fun changeMode(mode: CockpitMode) { motion.release(); gamepadSelected=false; cockpitMode = mode }
-    val gamepadStatus = CameraGamepadSession(motion, sarosDriveTest && showDriveTest && gamepadSelected && ready && !callBusy && !settings && !details)
+    val gamepadStatus = CameraGamepadSession(motion, sarosDriveTest && showDriveTest && gamepadSelected && ready && !callBusy && !settings && !details,
+        padLayout, padEnable)
     var mapExpanded by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
     var interaction by remember { mutableStateOf(0) }
@@ -133,7 +139,8 @@ internal fun CameraVideoControls(
     }
     LaunchedEffect(expanded) { if (!expanded) mapExpanded = false }
     LaunchedEffect(ready, settings) {
-        if (!ready || settings) { changeMode(CockpitMode.VIEWER) }
+        if (!ready) changeMode(CockpitMode.VIEWER)
+        else if (settings) motion.release()
     }
     LaunchedEffect(viewModel, ready, status.state) {
         if (controlsAllowed && ready && status.state == VacuumStateCodes.REMOTE_CONTROL_ACTIVE) {
@@ -284,7 +291,7 @@ internal fun CameraVideoControls(
                         onClick={motion.release();gamepadSelected=!gamepadSelected},
                         colors=ButtonDefaults.filledTonalButtonColors(
                             containerColor=Color(0xff171c20).copy(alpha=.86f),contentColor=Color.White)
-                    ) { Text(if(gamepadSelected) "Touch" else "Controller") }
+                    ) { Text(if(gamepadSelected) "Touch" else if(connectedPad!=null) "Use controller" else "Controller") }
                 }
             }
             Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
@@ -396,55 +403,126 @@ internal fun CameraVideoControls(
         text={Text(error ?: callError ?: "No current error")},
         confirmButton={TextButton(onClick={details=false}){Text("Close")}})
     if(settings) AlertDialog(
-        onDismissRequest={settings=false},title={Text("Remote viewing")},
-        text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            if(diagnostics.videoWidth>0 && diagnostics.videoHeight>0)
-                Text("Received video: ${diagnostics.videoWidth} × ${diagnostics.videoHeight}")
-            Text(diagnostics.summary,style=MaterialTheme.typography.bodySmall)
-            qualityError?.let {Text(it,color=MaterialTheme.colorScheme.error)}
-            Text(if (controlsAllowed) "Landscape video framing" else "Video framing")
-            Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                FilterChip(selected=!fillVideo,onClick={fillVideo=false},label={Text("Fit")})
-                FilterChip(selected=fillVideo,onClick={fillVideo=true},label={Text("Fill")})
+        onDismissRequest={settings=false},title={Text("Camera settings")},
+        text={Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            val sections = if (sarosDriveTest && cameraGamepadSupported) CameraSettingsSection.entries
+                else CameraSettingsSection.entries.filter {it!=CameraSettingsSection.CONTROLLER}
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                sections.filter {it!=CameraSettingsSection.DIAGNOSTICS}.forEach {section ->
+                    FilterChip(selected=settingsSection==section,onClick={settingsSection=section},
+                        label={Text(section.label,style=MaterialTheme.typography.labelSmall)})
+                }
             }
-            Text("Fit shows the whole camera frame. Fill trims edges to cover the screen.")
-            if (!controlsAllowed) {
-                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    Text("Read-only mini-map",Modifier.weight(1f))
-                    Switch(checked=showMiniMap,onCheckedChange={showMiniMap=it})
-                }
-                Text("The mini-map uses the last available map. It cannot steer the robot or select a target.",
-                    style=MaterialTheme.typography.bodySmall)
-            }
-            if (callsSupported) {
-                callButton(Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    Text("Microphone",Modifier.weight(1f))
-                    Switch(checked=callActive && !microphoneMuted,onCheckedChange={voice.muteMicrophone(!it)},enabled=callActive)
-                }
-                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    Text("Robot audio",Modifier.weight(1f))
-                    Switch(checked=callActive && !remoteAudioMuted,onCheckedChange={voice.muteRemoteAudio(!it)},enabled=callActive)
-                }
-                Text("Robot speaker volume" + (speakerVolume?.let { ": $it%" } ?: ": unchanged"))
-                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    listOf(25,50,75).forEach {value->
-                        FilterChip(selected=speakerVolume==value,onClick={voice.setSpeakerVolume(value)},
-                            enabled=callActive && !volumeBusy,label={Text("$value%")})
+            when(settingsSection) {
+                CameraSettingsSection.CAMERA -> {
+                    Text("Video framing",style=MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected=!fillVideo,onClick={fillVideo=false},label={Text("Fit")})
+                        FilterChip(selected=fillVideo,onClick={fillVideo=true},label={Text("Fill")})
+                    }
+                    Text("Fit preserves the whole frame. Fill crops the edges.",style=MaterialTheme.typography.bodySmall)
+                    if (!controlsAllowed) Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Mini-map")
+                            Text("Show last available map",style=MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(checked=showMiniMap,onCheckedChange={showMiniMap=it})
                     }
                 }
-                Text("Use your phone's volume buttons for the sound you hear. Calls are experimental and audio is not saved.")
-            } else Text("Voice calls are not supported by this video connection.")
-            callError?.let {Text(it,color=MaterialTheme.colorScheme.error)}
-            Button(onClick={},enabled=false,modifier=Modifier.fillMaxWidth()) {Text("Activate Remote Viewing")}
-            Button(onClick={},enabled=false,modifier=Modifier.fillMaxWidth()) {Text("Deactivate Remote Viewing")}
-            Text("Activate remote viewing in the official Roborock app while connected to Roborock's servers, before switching to the local server. Activation controls are unavailable in LocalRock.")
+                CameraSettingsSection.AUDIO -> {
+                    if (callsSupported) {
+                        Text(if(callActive) "Call active" else if(callBusy) "Connecting…" else "Call off",
+                            style=MaterialTheme.typography.titleSmall)
+                        callButton(Modifier.fillMaxWidth())
+                        if(callActive) {
+                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                                Text("Phone microphone",Modifier.weight(1f))
+                                Switch(checked=!microphoneMuted,onCheckedChange={voice.muteMicrophone(!it)})
+                            }
+                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                                Text("Listen to robot",Modifier.weight(1f))
+                                Switch(checked=!remoteAudioMuted,onCheckedChange={voice.muteRemoteAudio(!it)})
+                            }
+                            Text("Robot speaker volume" + (speakerVolume?.let { ": $it%" } ?: ""))
+                            Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                                listOf(25,50,75,100).forEach {value->
+                                    FilterChip(selected=speakerVolume==value,onClick={voice.setSpeakerVolume(value)},
+                                        enabled=!volumeBusy,label={Text("$value%",style=MaterialTheme.typography.labelSmall)})
+                                }
+                            }
+                        }
+                        Text("Audio is not saved. Use phone volume buttons to adjust listening volume.",style=MaterialTheme.typography.bodySmall)
+                    } else Text("Voice calls are unavailable for this connection.")
+                    callError?.let {Text(it,color=MaterialTheme.colorScheme.error)}
+                }
+                CameraSettingsSection.CONTROLLER -> {
+                    Text(if(connectedPad!=null) "Controller connected" else "No controller detected",
+                        color=if(connectedPad!=null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        style=MaterialTheme.typography.titleSmall)
+                    Text(connectedPad ?: "Pair a Bluetooth game controller in Android Settings.",style=MaterialTheme.typography.bodySmall)
+                    Text("Driving layout",style=MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected=padLayout==CameraPadLayout.JOYSTICK,onClick={padLayout=CameraPadLayout.JOYSTICK},label={Text("Joystick")})
+                        FilterChip(selected=padLayout==CameraPadLayout.RACING,onClick={padLayout=CameraPadLayout.RACING},label={Text("Racing")})
+                    }
+                    Text("Hold to enable",style=MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected=padEnable==CameraPadEnable.LEFT_BUMPER,onClick={padEnable=CameraPadEnable.LEFT_BUMPER},label={Text("LB")})
+                        FilterChip(selected=padEnable==CameraPadEnable.A,onClick={padEnable=CameraPadEnable.A},label={Text("A")})
+                    }
+                    HorizontalDivider()
+                    CameraMappingRow(holdLabel,"Hold to drive · release to stop")
+                    CameraMappingRow("Left stick",if(padLayout==CameraPadLayout.JOYSTICK) "Forward, reverse and steer" else "Steer")
+                    if(padLayout==CameraPadLayout.RACING) {
+                        CameraMappingRow("RT","Accelerate")
+                        CameraMappingRow("LT","Reverse")
+                    }
+                    CameraMappingRow("B","Stop")
+                    Text("Move and centre the controls once, then hold $holdLabel to drive. No movement on connection.",
+                        style=MaterialTheme.typography.bodySmall)
+                    Button(onClick={
+                        motion.release()
+                        if(cockpitMode==CockpitMode.VIEWER) cockpitMode= CockpitMode.PILOT
+                        gamepadSelected=true
+                        settings=false
+                    },enabled=connectedPad!=null && ready,modifier=Modifier.fillMaxWidth()) {Text("Use controller")}
+                }
+                CameraSettingsSection.DIAGNOSTICS -> {
+                    Text("Connection",style=MaterialTheme.typography.titleSmall)
+                    if(diagnostics.videoWidth>0 && diagnostics.videoHeight>0)
+                        Text("Received video: ${diagnostics.videoWidth} × ${diagnostics.videoHeight}")
+                    Text(diagnostics.summary)
+                    qualityError?.let {Text(it,color=MaterialTheme.colorScheme.error)}
+                    Text("Remote viewing activation",style=MaterialTheme.typography.titleSmall)
+                    Text("Activate remote viewing in the official Roborock app before switching to the local server. Activation is not available here.",
+                        style=MaterialTheme.typography.bodySmall)
+                }
+            }
+            if(settingsSection!=CameraSettingsSection.DIAGNOSTICS) {
+                HorizontalDivider()
+                TextButton(onClick={settingsSection=CameraSettingsSection.DIAGNOSTICS}) {Text("Advanced diagnostics")}
+            }
         }},
         confirmButton={TextButton(onClick={settings=false}){Text("Done")}},
     )
+
 }
 
 private enum class CockpitMode { VIEWER, PILOT, MAP }
+private enum class CameraSettingsSection(val label: String) {
+    CAMERA("Camera"), AUDIO("Audio"), CONTROLLER("Controller"), DIAGNOSTICS("Diagnostics")
+}
+
+@Composable
+private fun CameraMappingRow(button: String, action: String) {
+    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,
+        horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        Text(button,Modifier.width(76.dp).clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant).padding(6.dp),
+            textAlign=TextAlign.Center,style=MaterialTheme.typography.labelMedium)
+        Text(action,Modifier.weight(1f),style=MaterialTheme.typography.bodySmall)
+    }
+}
 
 /** One fresh touch gesture owns one drive operation. No restart after neutral or failure. */
 @Composable
