@@ -38,6 +38,7 @@ import com.kodraliu.localrock.shared.vacuum.camera.CameraModelSupport
 import com.kodraliu.localrock.shared.vacuum.camera.supportsExperimentalManualDriving
 import com.kodraliu.localrock.shared.vacuum.camera.cameraModelSupport
 import com.kodraliu.localrock.shared.webrtc.liveViewSupported
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -131,14 +132,14 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
     }
     fun submitEntry(test: CameraVideoTest = CameraVideoTest.OEM_MATCH, quality: CameraVideoQuality = preferredQuality,
         allowSave: Boolean = true) {
-        if (!canConnectNow || viewing) return
+        if (!canConnectNow || viewing || (allowSave && biometricJob != null)) return
         val credential = pin
         val rememberCredential = allowSave && saveBiometric && biometric.available && !biometricSaved
         dismissKeyboard()
         entry.submit(credential) {
             pin = credential
             if (rememberCredential) {
-                biometricJob = entryScope.launch {
+                val job = entryScope.launch(start = CoroutineStart.LAZY) {
                     try {
                         biometricSaved = biometric.save(credential)
                         saveBiometric = false
@@ -147,13 +148,15 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
                         biometricJob = null
                     }
                 }
+                biometricJob = job
+                job.start()
             } else start(test, quality)
         }
     }
     fun unlockBiometric() {
         if (!canConnectNow || viewing || checkingCredential || biometricJob != null) return
         biometricMessage = null
-        biometricJob = entryScope.launch {
+        val job = entryScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val credential = biometric.unlock()
                 if (credential == null) {
@@ -166,6 +169,8 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
                 biometricJob = null
             }
         }
+        biometricJob = job
+        job.start()
     }
 
     LaunchedEffect(confirmedQuality, state) {
