@@ -87,8 +87,10 @@ internal fun CameraVideoControls(
     var cockpitMode by remember { mutableStateOf(CockpitMode.VIEWER) }
     var details by remember { mutableStateOf(false) }
     val showDriveTest = cockpitMode == CockpitMode.PILOT
+    var gamepadSelected by remember { mutableStateOf(false) }
     val mapMode = sarosDriveTest && cockpitMode == CockpitMode.MAP
-    fun changeMode(mode: CockpitMode) { motion.release(); cockpitMode = mode }
+    fun changeMode(mode: CockpitMode) { motion.release(); gamepadSelected=false; cockpitMode = mode }
+    val gamepadStatus = CameraGamepadSession(motion, sarosDriveTest && showDriveTest && gamepadSelected && ready && !callBusy && !settings && !details)
     var mapExpanded by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
     var interaction by remember { mutableStateOf(0) }
@@ -274,14 +276,13 @@ internal fun CameraVideoControls(
                     .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                     .padding(start=12.dp,end=12.dp,bottom=80.dp),
                     horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.Bottom) {
-                    CameraPilotJoystick(motion,ready && !callBusy,Modifier.size(pilotPadSize))
-                    Column(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xff171c20).copy(alpha=.88f))
-                        .padding(8.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-                        Button(onClick={motion.stop(includeDock=false)},
-                            colors=ButtonDefaults.buttonColors(containerColor=Color(0xffb3261e),contentColor=Color.White)) {
-                            Icon(Icons.Default.Stop,null); Spacer(Modifier.width(4.dp)); Text("STOP")
-                        }
-                    }
+                    if (!gamepadSelected) CameraPilotJoystick(motion,ready && !callBusy,Modifier.size(pilotPadSize))
+                    else Spacer(Modifier.size(1.dp))
+                    if (cameraGamepadSupported) FilledTonalButton(
+                        onClick={motion.release();gamepadSelected=!gamepadSelected},
+                        colors=ButtonDefaults.filledTonalButtonColors(
+                            containerColor=Color(0xff171c20).copy(alpha=.86f),contentColor=Color.White)
+                    ) { Text(if(gamepadSelected) "Touch" else "Controller") }
                 }
             }
             Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
@@ -372,7 +373,7 @@ internal fun CameraVideoControls(
             val message = when {
                 issue != null -> if (error != null) "Drive needs attention" else "Call needs attention"
                 controlProgress != null -> controlProgress
-                showDriveTest -> if (ready) "Hold joystick to drive" else "Video disconnected"
+                showDriveTest -> if (!ready) "Video disconnected" else if (gamepadSelected) gamepadStatus else "Hold joystick to drive"
                 else -> null
             }
             if (message != null) Row(Modifier.align(Alignment.TopCenter)

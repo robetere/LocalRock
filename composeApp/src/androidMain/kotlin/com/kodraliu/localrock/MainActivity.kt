@@ -9,6 +9,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.os.Bundle
+import android.view.KeyEvent
+import android.view.MotionEvent
+import com.kodraliu.localrock.ui.vacuum.CameraGamepadBridge
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -73,7 +76,28 @@ class MainActivity : ComponentActivity() {
         setContent { App(container) }
     }
 
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (CameraGamepadBridge.motion(event)) return true
+        return super.dispatchGenericMotionEvent(event)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (CameraGamepadBridge.key(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        if (!hasFocus) CameraGamepadBridge.reset()
+        super.onWindowFocusChanged(hasFocus)
+    }
+
+    override fun onPause() {
+        CameraGamepadBridge.reset()
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        CameraGamepadBridge.reset()
         pendingMicrophonePermission?.complete(false)
         pendingMicrophonePermission = null
         if (activeActivity?.get() === this) activeActivity = null
