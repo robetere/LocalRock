@@ -40,7 +40,22 @@ The camera interface is an extension of LocalRock rather than a separate embedde
 
 ## Screenshots
 
-The original LocalRock gallery below remains available. The [camera screenshot gallery](docs/screenshots/camera/README.md) is reserved for genuine fork captures, including cover-screen and unfolded layouts. Earlier development screenshots should be labelled with their limitations; current-build captures are still needed for full validation.
+### Camera development previews
+
+These genuine Android screenshots show earlier stages of the fork. They illustrate the evolution of the camera interface, not the exact current build. Device status bars have been cropped; the camera feed and map content remain real.
+
+| Pilot — compact display | Map — compact display |
+| :---: | :---: |
+| <img src="docs/screenshots/camera/pilot-cover.jpg" alt="Early Pilot mode with analogue joystick" width="270"> | <img src="docs/screenshots/camera/map-cover.jpg" alt="Early Map mode with live video and floor plan" width="270"> |
+| Early joystick layout, before removal of the separate Stop button. | Early split view, before addition of manual driving controls to Map mode. |
+
+<p align="center">
+  <img src="docs/screenshots/camera/view-inner.jpg" alt="Early camera viewing on a wide unfolded display" width="560">
+</p>
+
+*Earlier wide-screen camera baseline on the unfolded HONOR Magic V5; the old compatibility banner is historical.*
+
+See the [camera screenshot gallery](docs/screenshots/camera/README.md) for capture notes. Current-build screenshots of controller input, unfolded Map mode and Android voice controls remain pending.
 
 ### Original LocalRock screenshots
 

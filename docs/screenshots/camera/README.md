@@ -1,7 +1,11 @@
 # Camera development screenshot gallery
 
-This directory is for genuine screenshots of the camera fork. The README retains the existing upstream screenshots. Current fork captures will be added here after review for private home imagery, floor plans and status-bar information.
+Genuine captures from earlier Android development builds. Device status bars were cropped; these are not generated mock-ups. The camera feed and floor plan are real.
 
-Suggested filenames: `pilot-cover.jpg`, `map-cover.jpg`, `view-inner.jpg`, `controller.jpg`, `map-inner.jpg`, `voice-call.jpg`.
+| Capture | Description |
+| --- | --- |
+| [Pilot, compact display](pilot-cover.jpg) | Early analogue joystick layout with the subsequently removed Stop button |
+| [Map, compact display](map-cover.jpg) | Early split live-video/map layout before manual controls were added to Map mode |
+| [Wide display](view-inner.jpg) | Earlier unfolded-display camera baseline; compatibility banner reflects that historical build |
 
-Earlier captures should be clearly marked as development previews rather than evidence of the current build. Do not include credentials or private network details.
+These images are illustrative, not evidence of the current commit passing hardware acceptance. New captures should show current View, Pilot, Map, Xbox controller, voice call and folded/unfolded layouts. See [hardware acceptance](../../camera-hardware-acceptance.md).
