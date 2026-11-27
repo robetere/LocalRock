@@ -45,6 +45,7 @@ LocalRock is a [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.
 - [Why LocalRock](#why-localrock)
 - [Features](#features)
   - [Features that need a newer server](#features-that-need-a-newer-server)
+- [Camera development fork](#camera-development-fork)
 - [Screenshots](#screenshots)
 - [How it works](#how-it-works)
   - [Camera live view](#camera-live-view)
@@ -120,6 +121,36 @@ Some features rely on server changes that are not in a released version of [`loc
 | Voice language packs | [#261](https://github.com/Python-roborock/local_roborock_server/pull/261) | The Language page says "Voice packs unavailable"; the rest of Voice Assistant works |
 | Matter on a locally paired robot | [#252](https://github.com/Python-roborock/local_roborock_server/pull/252) | The robot can't get a Matter setup code |
 | Firmware check and install | [#255](https://github.com/Python-roborock/local_roborock_server/pull/255), with the install option turned on | No update is found, and Update says the server's install option is needed |
+
+---
+
+## Camera development fork
+
+This branch extends the upstream experimental camera viewer, retaining LocalRock's
+local-server and WebRTC architecture. The development target is the Saros 10R
+(`roborock.vacuum.a144`, firmware `02.52.86`) on Android. The fork maintainer has
+reported physical-hardware testing of video, manual driving, Android two-way audio
+and Xbox controller input. This does not establish compatibility with other models
+or iOS.
+
+- **View / Pilot / Map:** camera-first viewing, proportional touch driving, and
+  combined floor-plan and video viewing. The existing Compose Multiplatform and
+  Material 3 UI conventions are retained.
+- **Physical controller:** Xbox controller input on Android as an alternative to
+  the touchscreen joystick.
+- **Foldable-aware layout:** developed using an HONOR Magic V5. The camera
+  interface adapts to available window dimensions, with compact controls below
+  the map on narrow displays and dedicated side space for the controls on wider
+  unfolded displays. Controller mode hides the touch joystick to free map space.
+  This is adaptive layout support, not a claim of verified continuity across
+  every fold/unfold transition or every foldable model.
+- **Experimental scope:** video and model opt-in remain relevant; no general
+  compatibility claim is made. Further regression, iOS and safety validation
+  are needed before upstream integration.
+
+See [camera development and validation notes](docs/camera-fork-overview.md).
+The standard screenshots below depict upstream LocalRock; current camera-mode
+and foldable-device screenshots are still to be collected.
 
 ---
 
