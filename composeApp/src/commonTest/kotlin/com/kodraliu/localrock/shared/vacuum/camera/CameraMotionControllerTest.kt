@@ -12,6 +12,7 @@ class CameraMotionControllerTest {
         val calls = mutableListOf<Pair<String,JsonElement>>()
         var state = 3
         var cleaning = 0
+        var returning = 0
         var startDelay = 0L
         var enterManualMode = true
         var statusDelay = 0L
@@ -31,7 +32,7 @@ class CameraMotionControllerTest {
             if (method == "get_status") {
                 delay(statusDelay)
                 return V1Response(null,buildJsonArray { add(buildJsonObject {
-                    put("state",state);put("in_cleaning",cleaning);put("error_code",robotError);put("map_status",0)
+                    put("state",state);put("in_cleaning",cleaning);put("in_returning",returning);put("error_code",robotError);put("map_status",0)
                 }) },null)
             }
             if (method == "app_rc_start") { delay(startDelay); if (enterManualMode) state=7 }
@@ -61,6 +62,56 @@ class CameraMotionControllerTest {
         c.dispose(); runCurrent()
         assertTrue(rpc.calls.isEmpty())
         assertFalse(c.viewerStartedActivity.value)
+    }
+
+    @Test fun saros_drive_is_bounded_and_releases_manual_session() = runTest {
+        for (direction in CameraMotionController.Direction.entries) {
+            val rpc = Rpc()
+            val c = CameraMotionController(rpc, {true},
+                CoroutineScope(SupervisorJob()+StandardTestDispatcher(testScheduler)),
+                experimentalDriveOnly = true)
+            c.hold(direction); runCurrent(); advanceTimeBy(450); runCurrent()
+            c.release(); advanceUntilIdle()
+            val moves = rpc.calls.filter {it.first=="app_rc_move"}
+            assertTrue(moves.isNotEmpty())
+            for ((_, params) in moves) {
+                val move = params.jsonArray.single().jsonObject
+                assertTrue(kotlin.math.abs(move["velocity"]!!.jsonPrimitive.double) <= .08)
+                assertTrue(kotlin.math.abs(move["omega"]!!.jsonPrimitive.double) <= .25)
+                assertEquals(500, move["duration"]!!.jsonPrimitive.int)
+            }
+            assertEquals(listOf("app_rc_stop","app_rc_end"),rpc.methods().takeLast(2))
+            assertFalse(c.manualMode.value)
+            c.dispose(); advanceUntilIdle()
+        }
+    }
+
+    @Test fun saros_test_refuses_docked_returning_and_existing_manual_sessions() = runTest {
+        for ((state, returning) in listOf(8 to 0, 3 to 1, 7 to 0)) {
+            val rpc = Rpc().apply { this.state=state; this.returning=returning }
+            val c = CameraMotionController(rpc,{true},
+                CoroutineScope(SupervisorJob()+StandardTestDispatcher(testScheduler)),
+                experimentalDriveOnly = true)
+            c.hold(CameraMotionController.Direction.FORWARD); advanceUntilIdle()
+            assertEquals(listOf("get_status"),rpc.methods())
+            assertNotNull(c.error.value)
+            c.dispose(); advanceUntilIdle()
+        }
+    }
+
+    @Test fun saros_drive_only_never_issues_cleaning_navigation_or_dock_commands() = runTest {
+        val rpc = Rpc()
+        val c = CameraMotionController(rpc,{true},
+            CoroutineScope(SupervisorJob()+StandardTestDispatcher(testScheduler)),
+            experimentalDriveOnly = true)
+        c.cleaning(CameraCleaningAction.START); advanceUntilIdle()
+        c.goTo(10000,10000,0); advanceUntilIdle()
+        c.stop(); advanceUntilIdle()
+        var finished = false
+        c.endViewing(returnToDock=true) {finished=true}; advanceUntilIdle()
+        assertTrue(finished)
+        assertTrue(rpc.calls.isEmpty())
+        c.dispose(); advanceUntilIdle()
     }
 
     @Test fun dockedPlayStartsCleaningBeforeVideoConnects() = runTest {
