@@ -47,6 +47,8 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
     val canConnect = videoEnabled && liveViewSupported && modelSupport.canConnect(testingEnabled)
     val canConnectNow by rememberUpdatedState(canConnect)
     val controlsAllowed = liveViewSupported && modelSupport.allowsRobotControls
+    // This fork permits only an explicit, low-speed manual drive test for Saros 10R.
+    val sarosDriveTest = liveViewSupported && viewModel.modelName == "roborock.vacuum.a144"
     val live = remember(viewModel) {
         CameraLiveSession(viewModel.repository.session, accessAllowed = { canConnectNow })
     }
@@ -60,7 +62,10 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
     val ready = connection == RtcConnectionState.CONNECTED &&
         state == CameraLiveSession.State.Streaming
     val readyNow by rememberUpdatedState(ready)
-    val motion = remember(viewModel) { CameraMotionController(viewModel.repository.session, controlsAllowed) { readyNow } }
+    val motion = remember(viewModel) {
+        CameraMotionController(viewModel.repository.session, controlsAllowed || sarosDriveTest,
+            experimentalDriveOnly = sarosDriveTest) { readyNow && canConnectNow }
+    }
     var expanded by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf(false) }
     var pendingCameraStart by remember { mutableStateOf(false) }
@@ -137,7 +142,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
         motion.release()
         exitNavigates = navigate
         if (!viewing) { live.stop(); if (navigate) onBack() }
-        else if (startedActivity) exitDialog = true
+        else if (startedActivity && controlsAllowed) exitDialog = true
         else finish()
     }
     BackHandler {
@@ -193,7 +198,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
             // Attach the renderer while connecting so a first video frame can be decoded.
             if (viewing) {
                 CameraVideoControls(viewModel, peer, motion, state, ready, expanded,
-                    controlsAllowed=controlsAllowed,
+                    controlsAllowed=controlsAllowed, sarosDriveTest=sarosDriveTest,
                     voice=live.voice,
                     onExpand={expanded=it}, onStopVideo={requestExit(false)},
                     onDock={motion.release();exitNavigates=false;dockDialog=true},onRetry={start()},
@@ -232,7 +237,8 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
                             Spacer(Modifier.width(8.dp))
                             Text("Enable video and audio testing for this robot")
                         }
-                        Text("Testing enables video viewing and audio calls on iPhone. Driving and cleaning controls are unavailable on this model.",
+                        Text(if (sarosDriveTest) "Video testing includes an optional low-speed manual driving test. Start off the dock, keep the robot in sight and release the controls to stop. Cleaning and map navigation remain disabled."
+                            else "Testing enables video viewing and audio calls on iPhone. Driving and cleaning controls are unavailable on this model.",
                             style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
                         TextButton(onClick = { uriHandler.openUri("https://github.com/DonSidro/LocalRock/pull/95") }) {
                             Text("Report your result", color = Color.White)

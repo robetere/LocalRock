@@ -27,11 +27,12 @@ class CameraMotionController internal constructor(
     private val ready: () -> Boolean,
     private val scope: CoroutineScope,
     private val controlsAllowed: Boolean = true,
+    private val experimentalDriveOnly: Boolean = false,
 ) {
-    constructor(session: VacuumSession, controlsAllowed: Boolean = true, ready: () -> Boolean) : this(
+    constructor(session: VacuumSession, controlsAllowed: Boolean = true, experimentalDriveOnly: Boolean = false, ready: () -> Boolean) : this(
         CameraRpc { method, params -> session.sendCommandRaw(method, params, timeoutMs = cameraControlTimeoutMs(method)) },
         ready, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
-        controlsAllowed,
+        controlsAllowed, experimentalDriveOnly,
     )
 
     enum class Direction(val velocity: Double, val omega: Double) {
@@ -83,7 +84,9 @@ class CameraMotionController internal constructor(
                 while (currentCoroutineContext().isActive) {
                     requireReady()
                     _viewerStartedActivity.value = true
-                    ack("app_rc_move", movement(direction.velocity, direction.omega, ++sequence))
+                    val velocity = if (experimentalDriveOnly) direction.velocity.coerceIn(-.08, .08) else direction.velocity
+                    val omega = if (experimentalDriveOnly) direction.omega.coerceIn(-.25, .25) else direction.omega
+                    ack("app_rc_move", movement(velocity, omega, ++sequence))
                     delay(200)
                 }
             } catch (e: CancellationException) {
@@ -98,7 +101,7 @@ class CameraMotionController internal constructor(
                     val stopped = runCatching { ack("app_rc_stop") }
                         .onFailure(::reportFailure).isSuccess
                     // Normal release retains the OEM manual session and its sequence numbers.
-                    if (!entered || failed || !stopped || !ready()) endManualMode()
+                    if (experimentalDriveOnly || !entered || failed || !stopped || !ready()) endManualMode()
                 }
             }
         }
@@ -112,6 +115,8 @@ class CameraMotionController internal constructor(
         _progress.value = "Checking robot…"
         var status = readStatus()
         requireNoTask(status)
+        if (experimentalDriveOnly && (status.state() != 3 || status.number("in_returning") != 0 || _manualMode.value))
+            throw MotionFailure("Saros drive test requires an idle robot off the dock, with no active manual session.")
         if (status.state() == VacuumStateCodes.GOING_TO_TARGET && navigationRequested) {
             requireReady()
             _progress.value = "Stopping Pin-and-Go…"
@@ -141,6 +146,7 @@ class CameraMotionController internal constructor(
         }
 
     fun cleaning(action: CameraCleaningAction) = launchOperation {
+        if (experimentalDriveOnly) return@launchOperation
         if (_manualMode.value) {
             if (!endManualMode()) return@launchOperation
             deadline("Waiting for manual control to end", 5_000) {
@@ -158,6 +164,7 @@ class CameraMotionController internal constructor(
 
     /** Pin-and-Go can undock the robot before camera frames are available. */
     fun goTo(x: Int, y: Int, floor: Int) = launchOperation {
+        if (experimentalDriveOnly) return@launchOperation
         require(x in 0..51_200 && y in 0..51_200)
         requireIdle(floor)
         navigationRequested = true
@@ -172,7 +179,7 @@ class CameraMotionController internal constructor(
     fun endViewing(returnToDock: Boolean = false, onFinished: () -> Unit = {}) {
         if (!controlsAllowed) { onFinished(); return }
         transition {
-            if (returnToDock) {
+            if (returnToDock && !experimentalDriveOnly) {
                 val status = readStatus()
                 check(status["error_code"]?.jsonPrimitive?.intOrNull == 0)
                 check(status.state() in setOf(2, 3, 4, 5, 6, 7, 8, 10, 11, 15, 16, 17, 18, 24, 100))
@@ -187,7 +194,7 @@ class CameraMotionController internal constructor(
 
     /** Explicit Stop may halt docking; background cleanup lets a return to dock continue. */
     fun stop(includeDock: Boolean = true) = transition {
-        stopNavigation(includeDock)
+        stopNavigation(includeDock && !experimentalDriveOnly)
         endManualMode()
     }
 
@@ -367,7 +374,7 @@ class CameraMotionController internal constructor(
 
     private fun movement(velocity: Double, omega: Double, sequence: Int) = buildJsonArray {
         add(buildJsonObject {
-            put("velocity", velocity); put("omega", omega); put("duration", 1500); put("seqnum", sequence)
+            put("velocity", velocity); put("omega", omega); put("duration", if (experimentalDriveOnly) 500 else 1500); put("seqnum", sequence)
         })
     }
 }

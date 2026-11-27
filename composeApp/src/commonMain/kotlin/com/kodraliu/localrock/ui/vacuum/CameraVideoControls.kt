@@ -53,7 +53,7 @@ import kotlinx.coroutines.launch
 internal fun CameraVideoControls(
     viewModel: VacuumViewModel, peer: RtcPeer?, motion: CameraMotionController,
     state: CameraLiveSession.State, ready: Boolean, expanded: Boolean,
-    controlsAllowed: Boolean,
+    controlsAllowed: Boolean, sarosDriveTest: Boolean = false,
     voice: CameraVoiceCall,
     onExpand: (Boolean) -> Unit, onStopVideo: () -> Unit, onDock: () -> Unit,
     onRetry: () -> Unit, quality: CameraVideoQuality, qualityEnabled: Boolean, qualityError: String?,
@@ -79,6 +79,7 @@ internal fun CameraVideoControls(
     var fillVideo by remember { mutableStateOf(controlsAllowed) }
     var showHud by remember { mutableStateOf(false) }
     var showMiniMap by remember { mutableStateOf(false) }
+    var showDriveTest by remember { mutableStateOf(false) }
     var mapExpanded by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
     var interaction by remember { mutableStateOf(0) }
@@ -120,6 +121,9 @@ internal fun CameraVideoControls(
         }
     }
     LaunchedEffect(expanded) { if (!expanded) mapExpanded = false }
+    LaunchedEffect(ready, docked, settings) {
+        if (!ready || docked || settings) { showDriveTest = false; motion.release() }
+    }
     LaunchedEffect(viewModel, ready, status.state) {
         if (controlsAllowed && ready && status.state == VacuumStateCodes.REMOTE_CONTROL_ACTIVE) {
             while (isActive) {
@@ -250,12 +254,29 @@ internal fun CameraVideoControls(
             if (!expanded && controlsAllowed) callIconButton(Modifier.align(Alignment.BottomStart).padding(8.dp))
         }
         if (!controlsAllowed) {
+            if (sarosDriveTest && showDriveTest && !settings) {
+                // The pad remains above the video footer on folded and unfolded displays.
+                CameraDrivePad(motion,ready && !docked,
+                    Modifier.align(Alignment.BottomStart)
+                        .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Start))
+                        .padding(start=12.dp,bottom=140.dp)
+                        .size(minOf(maxWidth*.48f,maxHeight*.34f,192.dp)),
+                    includeDockStop=false)
+            }
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                 .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                 .background(Color.Black.copy(alpha=.65f)).padding(12.dp),
                 horizontalAlignment=Alignment.CenterHorizontally) {
-                Text("Experimental video and audio · tested only on S7 MaxV", color=Color.White, textAlign=TextAlign.Center)
+                Text(if (sarosDriveTest) {
+                    if (showDriveTest) "Saros drive test · hold to move, release to stop"
+                    else "Saros camera · experimental"
+                } else "Experimental video and audio · tested only on S7 MaxV",
+                    color=Color.White, textAlign=TextAlign.Center)
                 Row(verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+                    if (sarosDriveTest) TextButton(
+                        onClick={motion.release();showDriveTest=!showDriveTest},
+                        enabled=showDriveTest || (ready && !docked && !busy)
+                    ) { Text(if (showDriveTest) "Hide drive" else "Drive",color=Color.White) }
                     callIconButton(Modifier)
                     TextButton(onClick=onStopVideo) { Text("End video",color=Color.White) }
                 }
@@ -375,7 +396,7 @@ internal fun CameraVideoControls(
 }
 
 @Composable
-private fun CameraDrivePad(motion: CameraMotionController, enabled: Boolean, modifier: Modifier) {
+private fun CameraDrivePad(motion: CameraMotionController, enabled: Boolean, modifier: Modifier, includeDockStop: Boolean = true) {
     val scope=rememberCoroutineScope()
     Box(modifier.clip(CircleShape).background(Color(0xff242424).copy(alpha=.55f))) {
         val keys=listOf(
@@ -405,7 +426,7 @@ private fun CameraDrivePad(motion: CameraMotionController, enabled: Boolean, mod
                 Icon(icon,label,Modifier.size(34.dp),tint=if(enabled) Color.White else Color.Gray)
             }
         }
-        FilledTonalIconButton(onClick={motion.stop()},modifier=Modifier.align(Alignment.Center).fillMaxSize(.27f)) {
+        FilledTonalIconButton(onClick={motion.stop(includeDock=includeDockStop)},modifier=Modifier.align(Alignment.Center).fillMaxSize(.27f)) {
             Icon(Icons.Default.Stop,"Stop movement")
         }
     }
