@@ -480,6 +480,9 @@ private fun CameraPilotJoystick(motion: CameraMotionController, enabled: Boolean
                         if(throttle!=0.0 || steering!=0.0) {
                             running=motion.pilotInput(throttle,steering,speed,start=!attempted)
                             attempted=true
+                        } else if(running) {
+                            motion.release()
+                            running=false
                         }
                     }
                 }
