@@ -39,7 +39,7 @@ import kotlinx.coroutines.delay
 internal fun CameraVideoControls(
     viewModel: VacuumViewModel, peer: RtcPeer?, motion: CameraMotionController,
     state: CameraLiveSession.State, ready: Boolean, expanded: Boolean,
-    controlsAllowed: Boolean, sarosDriveTest: Boolean = false,
+    controlsAllowed: Boolean, sarosDriveTest: Boolean = false, driveReady: Boolean = ready,
     voice: CameraVoiceCall,
     onExpand: (Boolean) -> Unit, onStopVideo: () -> Unit, onDock: () -> Unit,
     onRetry: () -> Unit, quality: CameraVideoQuality, qualityEnabled: Boolean, qualityError: String?,
@@ -73,7 +73,7 @@ internal fun CameraVideoControls(
     val mapMode = sarosDriveTest && cockpitMode == CockpitMode.MAP
     val showDriveTest = cockpitMode == CockpitMode.PILOT || mapMode
     fun changeMode(mode: CockpitMode) { motion.release(); gamepadSelected=false; cockpitMode = mode }
-    val gamepadStatus = CameraGamepadSession(motion, sarosDriveTest && showDriveTest && gamepadSelected && ready && !callBusy && !settings && !details,
+    val gamepadStatus = CameraGamepadSession(motion, sarosDriveTest && showDriveTest && gamepadSelected && driveReady && !callBusy && !settings && !details,
         padLayout)
     var mapExpanded by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
@@ -263,7 +263,7 @@ internal fun CameraVideoControls(
                     .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                     .padding(start=12.dp,end=12.dp,bottom=80.dp),
                     horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.Bottom) {
-                    if (!gamepadSelected) CameraPilotJoystick(motion,ready && !callBusy,Modifier.size(pilotPadSize))
+                    if (!gamepadSelected) CameraPilotJoystick(motion,driveReady && !callBusy,Modifier.size(pilotPadSize))
                     else Spacer(Modifier.size(1.dp))
                     if (cameraGamepadSupported) FilledTonalButton(
                         onClick={motion.release();gamepadSelected=!gamepadSelected},
@@ -311,7 +311,7 @@ internal fun CameraVideoControls(
                     Box(Modifier.fillMaxSize().semantics { contentDescription="Expand map for Pin-and-Go";onClick {motion.release();mapExpanded=true;true} }
                         .pointerInput(Unit) {detectTapGestures(onTap={motion.release();mapExpanded=true})})
                 }
-                if (controlsVisible) CameraDrivePad(motion,ready,
+                if (controlsVisible) CameraDrivePad(motion,driveReady,
                     Modifier.align(Alignment.BottomStart).windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Start))
                         .padding(16.dp).size((maxHeight*.48f).coerceAtMost(220.dp)))
             }
@@ -343,7 +343,7 @@ internal fun CameraVideoControls(
                     if (steering) {
                         val padSize=minOf(maxWidth*.85f,(maxHeight-40.dp).coerceAtLeast(48.dp))
                         Column(horizontalAlignment=Alignment.CenterHorizontally) {
-                            CameraDrivePad(motion,ready,Modifier.size(padSize))
+                            CameraDrivePad(motion,driveReady,Modifier.size(padSize))
                             Text("Hold to drive · release to stop",color=Color.LightGray,modifier=Modifier.padding(8.dp))
                         }
                     } else targetPanel(Modifier.fillMaxSize(),false)
@@ -360,7 +360,7 @@ internal fun CameraVideoControls(
             val message = when {
                 issue != null -> if (error != null) "Drive needs attention" else "Call needs attention"
                 controlProgress != null -> controlProgress
-                showDriveTest -> if (!ready) "Video disconnected" else if (gamepadSelected) gamepadStatus else "Hold joystick to drive"
+                showDriveTest -> if (!ready) "Video disconnected" else if (!driveReady) "Waiting for fresh video · driving disabled" else if (gamepadSelected) gamepadStatus else "Hold joystick to drive"
                 else -> null
             }
             if (message != null) Row(Modifier.align(Alignment.TopCenter)

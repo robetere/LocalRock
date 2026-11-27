@@ -13,6 +13,7 @@ import org.kotlincrypto.hash.md.MD5
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
+import kotlin.time.TimeSource
 
 internal fun interface CameraRpc {
     suspend fun call(method: String, params: JsonElement): V1Response
@@ -53,6 +54,18 @@ class CameraLiveSession internal constructor(
     val peer: StateFlow<RtcPeer?> = _peer
     private val _diagnostics = MutableStateFlow(RtcDiagnostics())
     val diagnostics: StateFlow<RtcDiagnostics> = _diagnostics
+    private val frameClock = TimeSource.Monotonic.markNow()
+    private val frameFreshness = CameraFrameFreshness()
+
+    /** Read at each motion command, not only on Compose recomposition. */
+    internal fun hasFreshVideo(): Boolean = _state.value == State.Streaming &&
+        _peer.value?.connectionState?.value == RtcConnectionState.CONNECTED &&
+        frameFreshness.isFresh(frameClock.elapsedNow().inWholeMilliseconds)
+
+    private fun updateDiagnostics(sample: RtcDiagnostics) {
+        frameFreshness.observe(sample.framesDecoded, frameClock.elapsedNow().inWholeMilliseconds)
+        _diagnostics.value = sample
+    }
     private val _cleanupWarning = MutableStateFlow<String?>(null)
     val cleanupWarning: StateFlow<String?> = _cleanupWarning
     private val _quality = MutableStateFlow(CameraVideoQuality.SD)
@@ -85,6 +98,7 @@ class CameraLiveSession internal constructor(
         activeAttempt = attempt
         _quality.value = quality
         _qualityError.value = null
+        frameFreshness.reset()
         _diagnostics.value = RtcDiagnostics()
         _cleanupWarning.value = null
         _state.value = State.Connecting("Preparing…")
@@ -104,6 +118,7 @@ class CameraLiveSession internal constructor(
                 failure = "${attempt.stage} failed. Check the robot and local server, then retry."
             } finally {
                 _state.value = State.Stopping
+                frameFreshness.reset()
                 qualityJob?.cancel()
                 withContext(NonCancellable) { voice.release() }
                 activeAttempt = null
@@ -323,7 +338,7 @@ class CameraLiveSession internal constructor(
                 if (peer.connectionState.value != RtcConnectionState.CONNECTED) {
                     throw CameraFailure("Video connection lost before receiving frames.")
                 }
-                _diagnostics.value = withTimeoutOrNull(2_000) { peer.diagnostics() } ?: RtcDiagnostics()
+                updateDiagnostics(withTimeoutOrNull(2_000) { peer.diagnostics() } ?: RtcDiagnostics())
                 if (!_diagnostics.value.videoReceived) delay(1_000)
             } while (!_diagnostics.value.videoReceived)
             peer
@@ -336,7 +351,7 @@ class CameraLiveSession internal constructor(
         }
         try {
             while (isActive) {
-                _diagnostics.value = withTimeoutOrNull(2_000) { pc.diagnostics() } ?: RtcDiagnostics()
+                updateDiagnostics(withTimeoutOrNull(2_000) { pc.diagnostics() } ?: RtcDiagnostics())
                 delay(2_000)
             }
         } finally {

@@ -63,9 +63,18 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
     val ready = connection == RtcConnectionState.CONNECTED &&
         state == CameraLiveSession.State.Streaming
     val readyNow by rememberUpdatedState(ready)
+    var freshVideo by remember(live) { mutableStateOf(false) }
+    LaunchedEffect(live, ready) {
+        freshVideo = false
+        if (ready) while (true) {
+            freshVideo = live.hasFreshVideo()
+            kotlinx.coroutines.delay(200)
+        }
+    }
+    val driveReady = ready && freshVideo
     val motion = remember(viewModel) {
         CameraMotionController(viewModel.repository.session, controlsAllowed || sarosDriveTest,
-            experimentalDriveOnly = sarosDriveTest) { readyNow && canConnectNow }
+            experimentalDriveOnly = sarosDriveTest) { readyNow && canConnectNow && live.hasFreshVideo() }
     }
     var expanded by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf(false) }
@@ -78,7 +87,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
     val robotStatus by viewModel.status.collectAsState()
     val docked = robotStatus.state in setOf(VacuumStateCodes.CHARGING, VacuumStateCodes.CHARGING_COMPLETE)
     val dockedNow by rememberUpdatedState(docked)
-    LaunchedEffect(ready) { if (!ready) motion.release() }
+    LaunchedEffect(driveReady) { if (!driveReady) motion.release() }
     val diagnostics by live.diagnostics.collectAsState()
     val confirmedQuality by live.quality.collectAsState()
     val qualityBusy by live.qualityBusy.collectAsState()
@@ -199,7 +208,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
             // Attach the renderer while connecting so a first video frame can be decoded.
             if (viewing) {
                 CameraVideoControls(viewModel, peer, motion, state, ready, expanded,
-                    controlsAllowed=controlsAllowed, sarosDriveTest=sarosDriveTest,
+                    controlsAllowed=controlsAllowed, sarosDriveTest=sarosDriveTest, driveReady=driveReady,
                     voice=live.voice,
                     onExpand={expanded=it}, onStopVideo={requestExit(false)},
                     onDock={motion.release();exitNavigates=false;dockDialog=true},onRetry={start()},

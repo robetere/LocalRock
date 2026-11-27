@@ -9,6 +9,7 @@ data class RtcDiagnostics(
     val videoReceived: Boolean = false,
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
+    val framesDecoded: Long = 0,
 ) {
     val summary: String get() = when (path) {
         RtcMediaPath.DIRECT -> "Direct · $localCandidateType / $remoteCandidateType · $protocol"
@@ -23,6 +24,7 @@ enum class RtcMediaPath { UNKNOWN, DIRECT, RELAY }
 fun selectedPairDiagnostics(
     localType: String?, remoteType: String?, protocol: String?, videoReceived: Boolean,
     videoWidth: Int = 0, videoHeight: Int = 0,
+    framesDecoded: Long = 0,
 ): RtcDiagnostics {
     val known = setOf("host", "srflx", "prflx", "relay")
     val local = localType?.takeIf { it in known } ?: "unknown"
@@ -34,5 +36,5 @@ fun selectedPairDiagnostics(
     }
     return RtcDiagnostics(path, local, remote,
         protocol?.takeIf { it in setOf("udp", "tcp") } ?: "unknown", videoReceived,
-        videoWidth.takeIf {it in 1..8192} ?: 0, videoHeight.takeIf {it in 1..8192} ?: 0)
+        videoWidth.takeIf {it in 1..8192} ?: 0, videoHeight.takeIf {it in 1..8192} ?: 0, framesDecoded.coerceAtLeast(0))
 }
