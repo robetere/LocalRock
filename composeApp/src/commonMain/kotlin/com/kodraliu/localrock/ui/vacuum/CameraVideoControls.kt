@@ -167,6 +167,17 @@ internal fun CameraVideoControls(
             }
         }
     }) {
+        // Folding, unfolding or rotating can change control geometry under an active
+        // gesture. Stop motion and require fresh input without recreating the video peer.
+        var previousViewport by remember { mutableStateOf<Pair<Float, Float>?>(null) }
+        LaunchedEffect(maxWidth, maxHeight) {
+            val viewport = maxWidth.value to maxHeight.value
+            if (previousViewport != null && previousViewport != viewport && sarosDriveTest) {
+                motion.release()
+                gamepadSelected = false
+            }
+            previousViewport = viewport
+        }
         val landscape = maxWidth > maxHeight
         val wide = expanded && landscape
         val overlayInsets = if (expanded) WindowInsets.safeDrawing else WindowInsets(0, 0, 0, 0)

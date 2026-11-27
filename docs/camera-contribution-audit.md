@@ -34,3 +34,32 @@ This is a targeted source review, not an independent security certification.
   completed that check.
 - Obtain redacted genuine screenshots and record the exact tested build.
 - Discuss feature scope upstream before preparing separate small PRs.
+
+## Privacy and device-readiness follow-up
+
+All 41 changed text files at `8273d72ff764a6320c02af30fd21712263c0bcf6` were scanned for common
+literal-secret formats, private network addresses, email addresses and known
+personal domain identifiers. No matching candidates were found. This is a
+heuristic snapshot check, not a scan of all historical commits, third-party
+dependencies or device storage. The additional review covered native audio,
+biometric storage, lifecycle cleanup and CI permissions.
+
+- Microphone access is explicitly requested for a call; ordinary viewing does
+  not attach a microphone track. The native peer checks foreground lifecycle
+  and permission before enabling the track. Ending the call disables audio.
+- Android backup is disabled. Biometric storage uses a per-server/robot hashed
+  namespace and per-operation strong-biometric AES-GCM authentication.
+  In-memory credential strings cannot be guaranteed to be zeroized on the JVM.
+- Native WebRTC logging is disabled; displayed connection errors are sanitized
+  and diagnostics use selected statistics. End-to-end log inspection on a
+  device remains necessary.
+- No new cloud service or analytics endpoint was identified in the reviewed
+  camera code. CI uses read-only repository permissions and external build
+  dependencies; those dependencies have not undergone a vulnerability audit.
+- A Saros viewport-size change now releases manual drive and deselects controller
+  input. The renderer is not intentionally recreated by this change. Physical
+  fold/unfold verification is still needed.
+
+The fork maintainer does not have an iOS device. Use macOS CI for compile/build
+validation and request upstream or community hardware testing; do not describe
+iOS as hardware verified. See [hardware acceptance](camera-hardware-acceptance.md).
