@@ -69,6 +69,7 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
         busy = { motionController.busy.value },
         move = { input, start -> motionController.pilotInput(input.throttle, input.steering, start) },
         release = motionController::release,
+        motionFailed = { motionController.error.value != null },
     )
 
     private fun publishStatus() { status = state.status }
@@ -119,7 +120,7 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
         if (!select(event.deviceId)) return false
         if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) return true
         val age = SystemClock.uptimeMillis() - event.eventTime
-        if (event.keyCode == KeyEvent.KEYCODE_BUTTON_B || age !in 0 until 1_500L) state.disarm()
+        if (event.keyCode == KeyEvent.KEYCODE_BUTTON_B || age !in 0L until 1_500L) state.disarm()
         else state.toggle()
         publishStatus()
         return true

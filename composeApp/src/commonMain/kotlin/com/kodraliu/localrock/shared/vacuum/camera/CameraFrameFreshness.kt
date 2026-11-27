@@ -17,7 +17,7 @@ internal class CameraFrameFreshness(private val timeoutMs: Long = 4_000L) {
 
     fun isFresh(nowMs: Long): Boolean {
         val age = lastAdvanceMs?.let { nowMs - it } ?: return false
-        return age in 0 until timeoutMs
+        return age in 0L until timeoutMs
     }
 
     fun reset() {

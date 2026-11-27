@@ -6,6 +6,7 @@ class CameraGamepadStateTest {
     private class Rig {
         var busy = false
         var accepted = true
+        var failed = false
         var releases = 0
         val moves = mutableListOf<Pair<CameraPadInput, Boolean>>()
         val machine = CameraGamepadState(
@@ -16,6 +17,7 @@ class CameraGamepadStateTest {
                 accepted
             },
             release = { releases++ },
+            motionFailed = { failed },
         )
         fun input(throttle: Double, steering: Double = 0.0, time: Long = 0) =
             machine.input(CameraPadInput(throttle, steering), time, time)
@@ -60,6 +62,17 @@ class CameraGamepadStateTest {
         r.input(.5, time = 250)
         assertEquals(2, r.moves.size)
         assertTrue(r.moves.last().second)
+    }
+
+    @Test fun failedStopDisarmsInsteadOfRearming() {
+        val r = Rig()
+        r.arm(); r.input(1.0); r.input(0.0)
+        r.failed = true
+        r.busy = false
+        r.machine.tick(100)
+        assertEquals(CameraPadState.WAIT_NEUTRAL, r.machine.state)
+        r.input(1.0)
+        assertEquals(1, r.moves.size)
     }
 
     @Test fun staleInputDisarmsAndDoesNotResumeAutomatically() {

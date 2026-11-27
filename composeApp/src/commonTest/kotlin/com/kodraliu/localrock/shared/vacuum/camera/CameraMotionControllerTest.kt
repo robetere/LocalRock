@@ -463,6 +463,27 @@ class CameraMotionControllerTest {
         assertEquals(listOf("get_status"),rpc.methods());assertContains(c.error.value!!,"Video disconnected")
         assertFalse(c.busy.value);c.dispose();advanceUntilIdle()
     }
+    @Test fun sarosStopsWhenDecodedVideoStopsAdvancing() = runTest {
+        val rpc = Rpc()
+        val freshness = CameraFrameFreshness(timeoutMs = 400)
+        freshness.observe(1, 0)
+        freshness.observe(2, 1)
+        val c = CameraMotionController(rpc, { freshness.isFresh(testScheduler.currentTime + 1) },
+            CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
+            experimentalDriveOnly = true)
+        assertTrue(c.pilotInput(1.0, 0.0, start = true))
+        runCurrent()
+        advanceTimeBy(450); runCurrent()
+        val moves = rpc.methods().count { it == "app_rc_move" }
+        assertTrue(moves > 0)
+        assertEquals(listOf("app_rc_stop", "app_rc_end"), rpc.methods().takeLast(2))
+        assertContains(c.error.value.orEmpty(), "stale")
+        freshness.observe(3, testScheduler.currentTime + 1)
+        advanceTimeBy(500); runCurrent()
+        assertEquals(moves, rpc.methods().count { it == "app_rc_move" })
+        c.dispose(); advanceUntilIdle()
+    }
+
     @Test fun goto_uses_bare_coordinates_and_stop_releases_owned_navigation() = runTest {
         val rpc=Rpc();val c=controller(rpc)
         c.goTo(24500,26000,0);advanceUntilIdle()

@@ -36,6 +36,7 @@ internal class CameraGamepadState(
     private val move: (CameraPadInput, Boolean) -> Boolean,
     private val release: () -> Unit,
     private val staleMs: Long = 1_500L,
+    private val motionFailed: () -> Boolean = { false },
 ) {
     var state = CameraPadState.WAIT_NEUTRAL
         private set
@@ -45,7 +46,7 @@ internal class CameraGamepadState(
     private var lastInputNeutral = false
 
     fun input(input: CameraPadInput, eventMs: Long, nowMs: Long) {
-        if (!input.valid || input.conflicting || nowMs - eventMs !in 0 until staleMs ||
+        if (!input.valid || input.conflicting || nowMs - eventMs !in 0L until staleMs ||
             (lastInputMs?.let { eventMs < it } == true)) {
             disarm(if (input.conflicting) "Release both triggers · press A to re-enable" else "Invalid or stale input · centre controls and press A")
             return
@@ -88,10 +89,14 @@ internal class CameraGamepadState(
     }
 
     fun tick(nowMs: Long) {
+        if ((state == CameraPadState.DRIVING || state == CameraPadState.STOPPING) && motionFailed()) {
+            disarm("Drive not confirmed · centre controls and press A")
+            return
+        }
         when (state) {
             CameraPadState.DRIVING -> {
                 val age = lastInputMs?.let { nowMs - it }
-                if (age == null || age !in 0 until staleMs) disarm("Input stale · centre controls and press A")
+                if (age == null || age !in 0L until staleMs) disarm("Input stale · centre controls and press A")
                 else if (!busy()) disarm("Drive ended · centre controls and press A")
             }
             CameraPadState.STOPPING -> if (!busy()) {

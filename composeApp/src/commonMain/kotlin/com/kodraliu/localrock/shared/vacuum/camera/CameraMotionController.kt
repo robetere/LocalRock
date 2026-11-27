@@ -322,7 +322,7 @@ class CameraMotionController internal constructor(
     }
 
     private fun requireReady() {
-        if (!ready()) throw MotionFailure("Live video is unavailable or stale. Wait for fresh video before driving.")
+        if (!ready()) throw MotionFailure("Video disconnected or stale. Wait for fresh video before driving.")
     }
     private fun JsonObject.number(key: String) = (this[key] as? JsonPrimitive)?.intOrNull
     private fun JsonObject.state() = number("state")
