@@ -12,7 +12,7 @@ import kotlin.math.abs
 
 internal actual val cameraGamepadSupported: Boolean = true
 
-private fun connectedPads() = InputDevice.getDeviceIds().mapNotNull { InputDevice.getDevice(it) }
+private fun connectedPads() = InputDevice.getDeviceIds().map { InputDevice.getDevice(it) }.filterNotNull()
     .filter { !it.isVirtual && it.sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK &&
         it.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD }
 
