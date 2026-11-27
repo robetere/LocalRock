@@ -11,3 +11,7 @@ internal expect fun cameraConnectedGamepad(): String?
 
 @Composable
 internal expect fun CameraGamepadSession(motion: CameraMotionController, enabled: Boolean, layout: CameraPadLayout): String
+
+/** Read-only controller preview, scoped to the settings dialog. */
+@Composable
+internal expect fun CameraGamepadMonitor(): CameraPadMonitorSnapshot

@@ -1,17 +1,14 @@
 package com.kodraliu.localrock.ui.vacuum
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.kodraliu.localrock.shared.vacuum.camera.CameraVoiceCall
 import com.kodraliu.localrock.shared.webrtc.RtcDiagnostics
 
@@ -47,6 +44,9 @@ internal fun CameraSettingsDialog(
 ) {
     AlertDialog(
         onDismissRequest={onDismiss()},title={Text("Camera settings")},
+        modifier=if (settingsSection == CameraSettingsSection.CONTROLLER)
+            Modifier.widthIn(max=780.dp).fillMaxWidth(.94f) else Modifier,
+        properties=DialogProperties(usePlatformDefaultWidth=settingsSection != CameraSettingsSection.CONTROLLER),
         text={Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             val sections = if (sarosDriveTest && cameraGamepadSupported) CameraSettingsSection.entries
                 else CameraSettingsSection.entries.filter {it!=CameraSettingsSection.CONTROLLER}
@@ -99,26 +99,7 @@ internal fun CameraSettingsDialog(
                     callError?.let {Text(it,color=MaterialTheme.colorScheme.error)}
                 }
                 CameraSettingsSection.CONTROLLER -> {
-                    Text(if(connectedPad!=null) "Controller connected" else "No controller detected",
-                        color=if(connectedPad!=null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        style=MaterialTheme.typography.titleSmall)
-                    Text(connectedPad ?: "Pair a Bluetooth game controller in Android Settings.",style=MaterialTheme.typography.bodySmall)
-                    Text("Driving layout",style=MaterialTheme.typography.titleSmall)
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected=padLayout==CameraPadLayout.JOYSTICK,onClick={onPadLayoutChange(CameraPadLayout.JOYSTICK)},label={Text("Joystick")})
-                        FilterChip(selected=padLayout==CameraPadLayout.RACING,onClick={onPadLayoutChange(CameraPadLayout.RACING)},label={Text("Racing")})
-                    }
-                    HorizontalDivider()
-                    CameraMappingRow("A","Enable / disable driving")
-                    CameraMappingRow("Left stick",if(padLayout==CameraPadLayout.JOYSTICK) "Forward, reverse and steer" else "Steer")
-                    if(padLayout==CameraPadLayout.RACING) {
-                        CameraMappingRow("RT","Accelerate")
-                        CameraMappingRow("LT","Reverse")
-                    }
-                    CameraMappingRow("B","Stop and disable driving")
-                    Text("Move and centre the controls once, then press A. Release the stick and triggers to stop. No button needs to be held.",
-                        style=MaterialTheme.typography.bodySmall)
-                    Button(onClick=onUseController,enabled=connectedPad!=null && ready,modifier=Modifier.fillMaxWidth()) {Text("Use controller")}
+                    CameraControllerSettings(connectedPad, padLayout, onPadLayoutChange, ready, onUseController)
                 }
                 CameraSettingsSection.DIAGNOSTICS -> {
                     Text("Connection",style=MaterialTheme.typography.titleSmall)
@@ -143,16 +124,5 @@ internal fun CameraSettingsDialog(
 
 internal enum class CameraSettingsSection(val label: String) {
     CAMERA("Camera"), AUDIO("Audio"), CONTROLLER("Controller"), DIAGNOSTICS("Diagnostics")
-}
-
-@Composable
-private fun CameraMappingRow(button: String, action: String) {
-    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,
-        horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        Text(button,Modifier.width(76.dp).clip(RoundedCornerShape(6.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant).padding(6.dp),
-            textAlign=TextAlign.Center,style=MaterialTheme.typography.labelMedium)
-        Text(action,Modifier.weight(1f),style=MaterialTheme.typography.bodySmall)
-    }
 }
 

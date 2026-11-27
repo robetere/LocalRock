@@ -10,3 +10,6 @@ internal actual fun cameraConnectedGamepad(): String? = null
 
 @Composable
 internal actual fun CameraGamepadSession(motion: CameraMotionController, enabled: Boolean, layout: CameraPadLayout): String = "Controller unavailable"
+
+@Composable
+internal actual fun CameraGamepadMonitor(): CameraPadMonitorSnapshot = CameraPadMonitorSnapshot()

@@ -118,7 +118,7 @@ internal fun CameraVideoControls(
     LaunchedEffect(expanded) { if (!expanded) mapExpanded = false }
     LaunchedEffect(ready, settings) {
         if (!ready) changeMode(CockpitMode.VIEWER)
-        else if (settings) motion.release()
+        else if (settings) { motion.release(); gamepadSelected = false }
     }
     LaunchedEffect(viewModel, ready, status.state) {
         if (controlsAllowed && ready && status.state == VacuumStateCodes.REMOTE_CONTROL_ACTIVE) {
