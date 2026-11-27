@@ -35,6 +35,13 @@ jobs:
           command -v sdkmanager
           sdkmanager --version
           test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+      - name: Cache Robolectric runtime dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-runtime-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'composeApp/build.gradle.kts') }}
+          restore-keys: |
+            robolectric-runtime-${{ runner.os }}-
       - name: Unit tests and debug APK
         shell: bash
         run: |
@@ -44,7 +51,28 @@ jobs:
             if bash ./gradlew --no-daemon --no-configuration-cache --max-workers=2 :composeApp:testDebugUnitTest :composeApp:assembleDebug 2>&1 | tee "$log"; then
               exit 0
             fi
-            if [ "$attempt" -eq 3 ] || ! grep -Eqi 'status code (429|5[0-9][0-9])|Too Many Requests|Connection reset|Read timed out' "$log"; then
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            # Retry only transport/dependency failures. A normal assertion failure is not retried.
+            if grep -q 'tests completed, .* failed' "$log"; then
+              if ! python3 - <<'PY'
+          import glob
+          import sys
+          import xml.etree.ElementTree as ET
+          failures = []
+          for path in glob.glob("composeApp/build/test-results/testDebugUnitTest/TEST-*.xml"):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  for failure in list(case.findall("failure")) + list(case.findall("error")):
+                      detail = (failure.get("message", "") + "\n" + (failure.text or ""))
+                      failures.append("MavenArtifactFetcher" in detail and
+                                      any(x in detail for x in ("java.io.IOException", "SocketTimeoutException", "ConnectException", "UnknownHostException")))
+          sys.exit(0 if failures and all(failures) else 1)
+          PY
+              then
+                exit 1
+              fi
+            elif ! grep -Eqi 'status code (429|5[0-9][0-9])|Too Many Requests|Connection reset|Read timed out' "$log"; then
               exit 1
             fi
             echo "Transient download failure; retrying after backoff."

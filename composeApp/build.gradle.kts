@@ -1,4 +1,5 @@
 import java.util.Base64
+import org.gradle.api.tasks.testing.Test
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -163,4 +164,11 @@ kotlin.sourceSets.commonTest.configure {
 
 dependencies {
     debugImplementation(libs.compose.uiTooling)
+}
+
+
+// Robolectric resolves its Android runtime from Maven at test execution time.
+// Use Maven Central's canonical endpoint rather than the default repo1 mirror.
+tasks.withType<Test>().configureEach {
+    systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
 }
