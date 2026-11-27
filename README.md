@@ -1,84 +1,133 @@
-# LocalRock
+# LocalRock — camera development fork
 
-**A local-network client for Roborock vacuums — control your robot without the Roborock cloud.**
+**Local-first Roborock control, extended with a native camera cockpit, Android audio, analogue driving, Xbox controller input and foldable-aware layouts.**
 
-<p align="center">
-  <a href="https://github.com/DonSidro/LocalRock/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/DonSidro/LocalRock?label=release&color=2ea44f"></a>
-  <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/DonSidro/LocalRock?color=blue"></a>
-  <img alt="Platforms: Android and iOS" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS-lightgrey">
-  <a href="https://kotlinlang.org/docs/multiplatform.html"><img alt="Kotlin 2.3.21" src="https://img.shields.io/badge/Kotlin-2.3.21-7F52FF?logo=kotlin&logoColor=white"></a>
-  <a href="https://www.jetbrains.com/compose-multiplatform/"><img alt="Compose Multiplatform 1.10.3" src="https://img.shields.io/badge/Compose%20Multiplatform-1.10.3-4285F4?logo=jetpackcompose&logoColor=white"></a>
-  <br>
-  <a href="https://github.com/DonSidro/LocalRock/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/DonSidro/LocalRock?style=flat&logo=github"></a>
-  <a href="https://github.com/DonSidro/LocalRock/issues"><img alt="Open issues" src="https://img.shields.io/github/issues/DonSidro/LocalRock"></a>
-  <a href="https://discord.gg/MJDZm9zmjY"><img alt="Join the LocalRock Discord" src="https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white"></a>
-</p>
+[![Android CI](https://github.com/robetere/LocalRock/actions/workflows/camera-c01-baseline.yml/badge.svg?branch=feature%2Fcamera-support)](https://github.com/robetere/LocalRock/actions/workflows/camera-c01-baseline.yml)
+[![iOS compilation](https://github.com/robetere/LocalRock/actions/workflows/camera-ios-validation.yml/badge.svg?branch=feature%2Fcamera-support)](https://github.com/robetere/LocalRock/actions/workflows/camera-ios-validation.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Upstream release](https://img.shields.io/github/v/release/DonSidro/LocalRock?label=upstream%20release)](https://github.com/DonSidro/LocalRock/releases/latest)
 
-LocalRock is a [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html) / [Compose Multiplatform](https://www.jetbrains.com/compose-multiplatform/) app (Android + iOS) that talks to a privately‑hosted [local_roborock_server](https://github.com/Python-roborock/local_roborock_server) instead of Roborock's cloud. Onboard and control your vacuum and edit its maps, entirely on your own network.
+[Upstream LocalRock](https://github.com/DonSidro/LocalRock) · [Development APK builds](https://github.com/robetere/LocalRock/actions/workflows/camera-c01-baseline.yml?query=branch%3Afeature%2Fcamera-support) · [Camera documentation](docs/camera-fork-overview.md) · [Hardware acceptance](docs/camera-hardware-acceptance.md)
 
-<p align="center">
-  <img src="docs/screenshots/hero-map.png" alt="LocalRock map and control screen" width="300">
-</p>
+LocalRock is a Kotlin/Compose Multiplatform application for Android and iOS that communicates with a self-hosted [local_roborock_server](https://github.com/Python-roborock/local_roborock_server). It provides local robot control, maps, cleaning and configuration without a direct Roborock-cloud login in the app.
 
-<table align="center"><tr>
-  <td valign="middle">
-    <a href="https://play.google.com/store/apps/details?id=com.kodraliu.localrock">
-      <img alt="Get it on Google Play" height="58"
-           src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png">
-    </a>
-  </td>
-  <td valign="middle">
-    <a href="https://apps.apple.com/dk/app/localrock/id6788538720">
-      <img alt="Download on the App Store" height="40"
-           src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg">
-    </a>
-  </td>
-</tr></table>
+This independent development branch builds on the original camera work in [upstream PR #95](https://github.com/DonSidro/LocalRock/pull/95), preserving the local server, WebRTC, Compose Multiplatform and Material 3 architecture. Its principal hardware target is the Saros 10R on Android.
 
 > [!IMPORTANT]
-> **Not affiliated with, endorsed by, or sponsored by Roborock.** All product names and trademarks are the property of their respective owners. This is an independent, community project.
+> This is an experimental fork, not an official LocalRock release. Camera access is opt-in and off by default. The new functionality is not verified across all robot models or on physical iOS devices. For the stable upstream application, use [official releases](https://github.com/DonSidro/LocalRock/releases).
+
+## Contents
+
+[Camera features](#camera-features) · [Screenshots](#screenshots) · [Foldable support](#foldable-phone-support) · [Controller support](#xbox-controller-support) · [Compatibility](#camera-compatibility) · [Safety](#driving-safety) · [Core features](#features) · [Installation](#getting-started) · [Architecture](#how-it-works) · [Testing](#validation-and-contribution) · [Privacy](#privacy--security) · [Credits](#acknowledgements)
+
+## Camera features
+
+| Capability | What the development branch adds |
+| --- | --- |
+| Saros 10R | Hardware-tested live video, manual driving and two-way Android audio |
+| View mode | Uncluttered live video, robot state, battery and connection status |
+| Pilot mode | Proportional analogue touchscreen joystick, optional minimap, voice call |
+| Map mode | Larger read-only floor plan alongside live video and manual controls |
+| Physical controller | Xbox input, two layouts, explicit enable/disarm, release-to-stop |
+| Adaptive layout | Narrow cover-screen and wider unfolded layouts; orientation-aware geometry |
+| Android audio | Explicit two-way calls, independent microphone and incoming-audio controls |
+| Biometric unlock | Optional encrypted camera credential storage on Android 11+ with strong biometrics |
+| Motion guards | Separate Saros control profile, state checks, frame-freshness monitoring and cleanup |
+
+### Native design
+
+The camera interface is an extension of LocalRock rather than a separate embedded application. It retains Compose Multiplatform, Material 3 components, existing navigation, typography and icon conventions, as well as the existing camera and map infrastructure. Dark camera overlays maintain contrast against live video. Technical diagnostics are kept in settings instead of cluttering the main view. Users can switch between View, Pilot and Map without deliberately restarting the camera session.
+
+## Screenshots
+
+The original LocalRock gallery below remains available. The [camera screenshot gallery](docs/screenshots/camera/README.md) is reserved for genuine fork captures, including cover-screen and unfolded layouts. Earlier development screenshots should be labelled with their limitations; current-build captures are still needed for full validation.
+
+### Original LocalRock screenshots
+
+The following screenshots are from the upstream LocalRock project, not the new camera cockpit. The core app follows the system theme; light and dark can be forced in settings.
+
+| Map & control | Device list | Cleaning modes | Room selection |
+| :---: | :---: | :---: | :---: |
+| ![Map and control](docs/screenshots/hero-map.png) | ![Device list](docs/screenshots/device-list.png) | ![Cleaning modes](docs/screenshots/cleaning-modes.png) | ![Room selection](docs/screenshots/room-select.png) |
+
+| More actions | Map editor | Maps & floors | Dock & care |
+| :---: | :---: | :---: | :---: |
+| ![More actions](docs/screenshots/more-actions.png) | ![Map editor](docs/screenshots/map-editor.png) | ![Map management and multi-level maps](docs/screenshots/maps.png) | ![Dock control](docs/screenshots/dock.png) |
+
+| Cleaning history | Add vacuum | Robot settings |
+| :---: | :---: | :---: |
+| ![Cleaning history](docs/screenshots/history.png) | ![On-phone onboarding](docs/screenshots/onboarding.png) | ![Robot settings](docs/screenshots/settings.png) |
+
+Light theme:
+
+<p align="center">
+  <img src="docs/screenshots/light-mode.png" alt="LocalRock in light theme" width="300">
+</p>
 
 ---
 
-## Table of contents
+## Foldable phone support
 
-- [Why LocalRock](#why-localrock)
-- [Features](#features)
-  - [Features that need a newer server](#features-that-need-a-newer-server)
-- [Camera development fork](#camera-development-fork)
-- [Screenshots](#screenshots)
-- [How it works](#how-it-works)
-  - [Camera live view](#camera-live-view)
-- [Requirements](#requirements)
-- [Getting started](#getting-started)
-  - [1. Run the local server](#1-run-the-local-server)
-  - [2. Build the app](#2-build-the-app)
-  - [3. First‑run setup](#3-first-run-setup)
-- [Project structure](#project-structure)
-- [Tech stack](#tech-stack)
-- [Platform status](#platform-status)
-- [Building from source](#building-from-source)
-- [Troubleshooting](#troubleshooting)
-- [Privacy & security](#privacy--security)
-- [Community](#community)
-- [Support the project](#support-the-project)
-- [Contributing](#contributing)
-- [License](#license)
+Development is focused on the HONOR Magic V5, using available window dimensions rather than hardcoding a device identifier.
 
----
+- **Narrow/cover display:** compact joystick below the floor plan, with a clear video and navigation area.
+- **Wider/inner display:** the map reserves dedicated side space for driving controls, preserving the central map.
+- **Physical controller:** hides the touch joystick to maximise the viewing area.
+- **Rotation or resize:** Saros manual input is released and controller input is deselected when the available viewport changes; the native video renderer is not intentionally recreated.
+
+The responsive layout is implemented. Continuous streaming, safe motion cancellation and every fold/unfold transition still require explicit hardware verification. No blanket claim is made for every foldable device.
+
+## Xbox controller support
+
+Pair an Xbox controller in Android Bluetooth settings, open a live camera session, and select controller input in Pilot or Map mode. Move and centre the controls to initialise, then press **A** to enable. Press **A** again or **B** to disarm.
+
+| Input | Racing layout | Joystick layout |
+| --- | --- | --- |
+| Right trigger | Forward acceleration | — |
+| Left trigger | Reverse | — |
+| Left thumbstick X | Steering | Steering |
+| Left thumbstick Y | — | Forward / reverse |
+| Centre/release analogue inputs | Stop | Stop |
+| B | Disarm | Disarm |
+
+Xbox input has been tested on physical Android hardware by the fork maintainer. A Bluetooth link failure without a timely OS disconnect notification remains a hardware test case, not a guaranteed fail-safe.
+
+## Camera compatibility
+
+Video remains off by default. Enable **Settings → Experimental video** and use the model-specific opt-in when presented.
+
+| Model / platform | Camera | Driving | Audio |
+| --- | --- | --- | --- |
+| Saros 10R (`a144`), Android, firmware `02.52.86` | Reported hardware tested | Reported hardware tested, experimental | Reported hardware tested |
+| S7 MaxV (`a27`) | Upstream tested | Upstream controls retained | iOS upstream tested; fork regression pending |
+| Other recognised camera models | Experimental opt-in | No expanded driving support | Model/platform dependent, unverified |
+| iOS with fork changes | Build validation via CI | Physical regression pending | Physical regression pending |
+
+See the [upstream camera guide](docs/camera-live-view.md) for the full recognised model list. Unknown model IDs remain excluded. Other robots are not declared compatible solely because they have a camera.
+
+### Camera setup
+
+1. Activate remote viewing through the official Roborock app **before** moving the robot to the local server. Retain the existing PIN or pattern.
+2. Configure the local server's camera support and reachable TURN endpoint; the robot, phone and server must be able to reach it.
+3. Enable experimental video in LocalRock, open the video entry and opt in where required.
+4. Enter the existing credential; wait for decoded frames before attempting manual driving.
+
+Optional [biometric camera unlock](docs/camera-biometric-credentials.md) stores an encrypted credential using Android Keystore and strong per-operation biometric authentication. The normal robot verification is still required. It is not a PIN bypass.
+
+## Driving safety
+
+Saros driving is separate from the upstream S7 MaxV control path. The requested command envelope is up to 0.30 m/s forward, 0.12 m/s reverse and 0.40 rad/s steering, with reduced forward speed during sharper turns. These are requested values, not measured chassis speeds. Commands use a 500 ms requested duration.
+
+The implementation checks robot state and task status before entering manual control, stops on release or loss of fresh video, rejects invalid analogue values, disarms on detected controller/focus changes, and does not automatically replay failed movement commands. Saros camera driving does not expose the upstream Pin-and-Go, cleaning or docking actions. The floor plan in the cockpit is read-only and may be stale; it is not a live navigation safety sensor.
+
+> [!WARNING]
+> Experimental motion control is not a certified emergency-stop system. Test with the robot in sight, in a clear area away from stairs, children and pets. If stopping is uncertain, use the robot's normal stop control and do not retry until safe.
 
 ## Why LocalRock
 
-The official Roborock app routes every command through Roborock's servers. LocalRock is for people who want to keep their robot on the local network:
+LocalRock enables self-hosted robot control, on-phone onboarding, maps and cleaning without a direct cloud account in the application. The core implementation uses the existing Hawk-signed REST, MQTT-over-TLS and Roborock V1 protocol against the configured local server. Some server-side services, including firmware checking, may contact Roborock on the user's behalf.
 
-- **No Roborock cloud dependency** — the app talks only to *your* server.
-- **No analytics, no remote logging, no auto‑update, no account creation.**
-- **Onboard new vacuums straight from the phone** — no laptop or CLI needed.
-- **Open source**, so you can see exactly what it does with your data.
 
-The app implements the Roborock protocol (Hawk‑signed REST + MQTT‑over‑TLS RPC + the V1 message envelope) against the local server's cloud‑emulation API.
-
----
 
 ## Features
 
@@ -90,7 +139,7 @@ The app implements the Roborock protocol (Hawk‑signed REST + MQTT‑over‑TLS
 - **Room cleaning** — pick rooms in the order they should be cleaned, with real names pulled from your home data, and set a default cleaning order for a full clean
 - **Pin & Go** — send the robot to a point on the map
 - **Remote control** — manually drive the vacuum
-- **Video (experimental)** — live camera view with driving and Pin & Go on the S7 MaxV, and two‑way audio on iPhone; off by default, see [Camera live view](#camera-live-view)
+- **Video (experimental)** — native live camera viewing; model-specific control and voice support. See [Camera compatibility](#camera-compatibility).
 - **Map editor** — draw no‑go zones, invisible walls, carpets (including round ones) and thresholds; pick a room type or give a room a custom name; split and merge rooms; set floor types
 - **Furniture** — on robots that report furniture support, see the furniture on the map and add, move and remove it (robots with one saved map)
 - **Map management** — rename and delete maps, back up and restore a map, and send the robot out to map the home again (for example after moving the dock)
@@ -124,60 +173,6 @@ Some features rely on server changes that are not in a released version of [`loc
 
 ---
 
-## Camera development fork
-
-This branch extends the upstream experimental camera viewer, retaining LocalRock's
-local-server and WebRTC architecture. The development target is the Saros 10R
-(`roborock.vacuum.a144`, firmware `02.52.86`) on Android. The fork maintainer has
-reported physical-hardware testing of video, manual driving, Android two-way audio
-and Xbox controller input. This does not establish compatibility with other models
-or iOS.
-
-- **View / Pilot / Map:** camera-first viewing, proportional touch driving, and
-  combined floor-plan and video viewing. The existing Compose Multiplatform and
-  Material 3 UI conventions are retained.
-- **Physical controller:** Xbox controller input on Android as an alternative to
-  the touchscreen joystick.
-- **Foldable-aware layout:** developed using an HONOR Magic V5. The camera
-  interface adapts to available window dimensions, with compact controls below
-  the map on narrow displays and dedicated side space for the controls on wider
-  unfolded displays. Controller mode hides the touch joystick to free map space.
-  This is adaptive layout support, not a claim of verified continuity across
-  every fold/unfold transition or every foldable model.
-- **Experimental scope:** video and model opt-in remain relevant; no general
-  compatibility claim is made. Further regression, iOS and safety validation
-  are needed before upstream integration.
-
-See [camera development and validation notes](docs/camera-fork-overview.md).
-The standard screenshots below depict upstream LocalRock; current camera-mode
-and foldable-device screenshots are still to be collected.
-
----
-
-## Screenshots
-
-The app follows the system theme by default; light and dark can be forced in settings.
-
-| Map & control | Device list | Cleaning modes | Room selection |
-| :---: | :---: | :---: | :---: |
-| ![Map and control](docs/screenshots/hero-map.png) | ![Device list](docs/screenshots/device-list.png) | ![Cleaning modes](docs/screenshots/cleaning-modes.png) | ![Room selection](docs/screenshots/room-select.png) |
-
-| More actions | Map editor | Maps & floors | Dock & care |
-| :---: | :---: | :---: | :---: |
-| ![More actions](docs/screenshots/more-actions.png) | ![Map editor](docs/screenshots/map-editor.png) | ![Map management and multi-level maps](docs/screenshots/maps.png) | ![Dock control](docs/screenshots/dock.png) |
-
-| Cleaning history | Add vacuum | Robot settings |
-| :---: | :---: | :---: |
-| ![Cleaning history](docs/screenshots/history.png) | ![On-phone onboarding](docs/screenshots/onboarding.png) | ![Robot settings](docs/screenshots/settings.png) |
-
-Light theme:
-
-<p align="center">
-  <img src="docs/screenshots/light-mode.png" alt="LocalRock in light theme" width="300">
-</p>
-
----
-
 ## How it works
 
 ```
@@ -192,18 +187,6 @@ Light theme:
 - **MQTT over TLS** — the robot and the app both connect to the server's MQTT broker; the server bridges messages between them. Commands are Roborock **V1 protocol** frames (protobuf/JSON envelope). Map edits and map management run over this same channel.
 
 The app is **local‑only by design**: there is no Roborock‑cloud login, no server discovery, and no telemetry. The server URL is configured manually.
-
-### Camera live view
-
-> [!NOTE]
-> Video is **experimental and off by default**. Turn on **Settings → Experimental video** on the robot's settings page to show it.
-
-- **S7 MaxV** (`roborock.vacuum.a27`) is the tested model: live video, driving, Pin & Go and, on iPhone, two‑way audio calls.
-- Nine other models with Roborock remote viewing can try video and audio under a per‑visit testing opt‑in; driving stays off on them. The list is in [docs/camera-live-view.md](docs/camera-live-view.md).
-- Remote viewing must have been activated in the official Roborock app **before** the robot moved to the local server. Keep your existing camera PIN or pattern.
-- The robot, phone and server must all reach your server's **TURN** endpoint, and the server needs its camera support.
-
----
 
 ## Requirements
 
@@ -223,9 +206,9 @@ Follow the setup instructions for [`local_roborock_server`](https://github.com/P
 - Point the app at the **server root** (e.g. `https://your-host:555`), **not** the `/admin` panel.
 - Make sure your vacuum is imported into the server's inventory and connected to its MQTT broker.
 
-### 2. Build the app
+### 2. Install or build the development APK
 
-**Android:**
+**Android:** Open [the camera branch's GitHub Actions runs](https://github.com/robetere/LocalRock/actions/workflows/camera-c01-baseline.yml?query=branch%3Afeature%2Fcamera-support), select a successful run, and download its APK artifact (GitHub sign-in may be required). These are experimental debug builds, not official releases. Alternatively, build locally:
 
 ```shell
 # macOS / Linux
@@ -235,7 +218,7 @@ Follow the setup instructions for [`local_roborock_server`](https://github.com/P
 .\gradlew.bat :composeApp:assembleDebug
 ```
 
-The APK lands in `composeApp/build/outputs/apk/debug/`. Install it, or run directly from Android Studio.
+The APK lands in `composeApp/build/outputs/apk/debug/`. Install it, or run directly from Android Studio. The application ID is shared with upstream; an APK signed with a different key cannot update the installed application. Do not uninstall an existing installation just to test without first considering configuration loss.
 
 **iOS:** open `iosApp/` in Xcode and run (requires macOS — see [Platform status](#platform-status)).
 
@@ -312,13 +295,15 @@ tests/                  # protocol/contract fixtures & tests
 | Core control, map, rooms | Yes | Yes |
 | Map editor, map management, multi‑level maps | Yes | Yes |
 | MQTT over TLS | Yes (Eclipse Paho) | Yes (CocoaMQTT bridge) |
-| Camera live view (WebRTC) | Experimental, off by default | Experimental, off by default; two‑way audio calls |
+| Camera live view (WebRTC) | Experimental; Saros 10R tested in fork | Upstream support; fork hardware testing pending |
+| Two-way camera audio | Implemented, tested on Saros 10R | Existing upstream implementation; fork not hardware tested |
+| Xbox gamepad / biometric unlock | Android-only fork features | Not implemented in fork |
 | RSA (onboarding crypto) | Yes | Yes |
 | Phone Wi‑Fi pairing (Add vacuum) | Yes | Yes |
 
 **Map editor note:** saving zones, walls, carpets and thresholds is currently limited to robots with a **single saved map**; on a multi‑level robot those tools are disabled and the editor says so. Room edits and map management are not affected. No‑mop zones are not editable yet.
 
-**Camera live view note:** off by default on both platforms — see [Camera live view](#camera-live-view).
+**Camera live view note:** off by default on both platforms — see [Camera compatibility](#camera-compatibility).
 
 **iOS note:** Kotlin/Native iOS targets must be built on macOS. The iOS MQTT and WebRTC integrations rely on Swift Package Manager dependencies ([CocoaMQTT](https://github.com/emqx/CocoaMQTT), [WebRTC](https://github.com/stasel/WebRTC)) that must be added to the `iosApp` Xcode target, and the Swift bridge files (`CocoaMqttTransport.swift`, `WebRtcPeer.swift`, `VacuumPairing.swift`) added to the target. Pass `nil` for the WebRTC factory to ship without live view, or `nil` for the pairing factory to hide the "add vacuum" flow. iOS uses a custom bundle identifier that needs signing/provisioning selected in Xcode.
 
@@ -331,7 +316,7 @@ tests/                  # protocol/contract fixtures & tests
 **Prerequisites:** JDK 17+, Android SDK, and (for iOS) macOS + Xcode.
 
 ```shell
-git clone <your-fork-url>
+git clone --branch feature/camera-support https://github.com/robetere/LocalRock.git
 cd LocalRock
 
 # Android debug build
@@ -368,21 +353,47 @@ cd LocalRock
 - Saving zones, walls, carpets and thresholds is only supported on robots with a single saved map for now.
 
 **There is no camera button**
-- Turn on **Settings → Experimental video**. The button only shows on the models listed in [Camera live view](#camera-live-view).
+- Turn on **Settings → Experimental video**. The button only shows on the models listed in [Camera compatibility](#camera-compatibility).
 
 **Room names show as "Room 26"**
 - Real names come from your server's `get_home_data`. If the server doesn't return room names, the map falls back to segment ids.
 
 ---
 
+**Camera connects but driving is unavailable** — Wait for fresh decoded video, verify the robot is idle or charging and no cleaning or return task is active. Centre controls and explicitly retry when safe.
+
+**Controller not responding** — Pair the controller in Android settings, select Pilot or Map, choose controller input, move and centre the controls to initialise, then press A to enable. B disarms. If a command cannot be confirmed, check the robot before trying again.
+
+**Camera connection fails** — Check server camera/TURN support, existing remote-viewing activation and PIN, and that another viewer is not active. Do not reset or bypass the credential.
+
 ## Privacy & security
 
-- **No cloud, no analytics, no remote logging.** The app talks only to the server you configure.
-- Auth tokens are excluded from Android cloud/device‑to‑device backup (`allowBackup=false` + backup rules).
-- HTTP request/response logging is disabled in release builds (bodies carry secrets).
-- Secrets are kept out of logs.
+- No new camera analytics or cloud service is introduced by this fork. Video uses the configured local server and camera/TURN infrastructure.
+- Microphone capture is explicitly requested for calls; ordinary video viewing does not attach a microphone track. Call cleanup disables local audio.
+- Optional camera credential encryption uses Android Keystore AES-GCM and strong biometric authentication; the normal PIN/pattern is still verified by the robot.
+- Android backup is disabled. Release HTTP body logging and native WebRTC debug logging are disabled. Do not publish raw SDP/ICE, TURN credentials, PINs, private maps or home imagery.
+- A heuristic scan of the changed files found no obvious embedded private keys, tokens or personal addresses. This is not a full historical secret scan, penetration test or dependency audit.
+
+See [privacy policy](PRIVACY.md) and [audit report](docs/camera-contribution-audit.md).
+
+## Validation and contribution
+
+Android CI builds and runs unit tests on the development branch. macOS CI checks shared Kotlin compilation for iOS device and simulator. A full iOS build and physical iPhone/S7 MaxV regression remain separate acceptance gates. The maintainer's hardware is Saros 10R and HONOR Magic V5; Xbox controller and Android voice calls have been reported working. Latest CI status is shown by the badges above; a green build is not a hardware test.
+
+| Documentation | Purpose |
+| --- | --- |
+| [Camera fork overview](docs/camera-fork-overview.md) | Design, scope and validation status |
+| [Contribution audit](docs/camera-contribution-audit.md) | Source review, safeguards and open issues |
+| [Hardware acceptance](docs/camera-hardware-acceptance.md) | Repeatable Android, motion, foldable and privacy checks |
+| [Biometric credentials](docs/camera-biometric-credentials.md) | Security design and tests |
+| [Upstream camera guide](docs/camera-live-view.md) | Original implementation and model list |
+| [Initial baseline procedure](docs/camera-c01-baseline.md) | Historical baseline testing |
+
+Proposed upstream contributions: model compatibility, Android audio, proportional driving, camera UI and foldable adaptation, physical controller support, and optional biometric storage. These can be discussed and reviewed independently. Possible future work includes fresher map updates, snapshots, waypoint navigation and optional visual overlays; none is presented as implemented.
 
 ---
+
+
 
 ## Community
 
@@ -392,7 +403,7 @@ Join the [LocalRock Discord](https://discord.gg/MJDZm9zmjY) for help with setup,
 
 ## Support the project
 
-LocalRock is free, open source, and built in my spare time. There's no cloud, no subscriptions, and no analytics — just an app that does one thing for people who want their vacuum to stay on the local network.
+Upstream LocalRock is free, open source, and maintained by Sidon Kodraliu. There's no cloud, no subscriptions, and no analytics — just an app that does one thing for people who want their vacuum to stay on the local network.
 
 If it's useful to you and you'd like to help keep it maintained, a small donation goes a long way and is genuinely appreciated. It's never required — the app is and will stay free.
 
@@ -405,7 +416,7 @@ Not able to donate? Starring the repo, filing good bug reports, and contributing
 
 ## Contributing
 
-Contributions are welcome! Please open an issue to discuss substantial changes first, or bring them up on [Discord](https://discord.gg/MJDZm9zmjY). When submitting a PR:
+For upstream contributions, please open an issue to discuss substantial changes first, or bring them up on [Discord](https://discord.gg/MJDZm9zmjY). This fork aims to offer small, independently reviewable changes rather than replace the upstream architecture. When submitting a PR:
 
 - Keep the app **local‑only** — no code paths that depend on the real Roborock cloud.
 - Follow the existing architecture (single `commonMain` core, `StateFlow` view models, manual DI via `AppContainer`, expect/actual for platform bits).
@@ -421,6 +432,8 @@ Released under the [MIT License](./LICENSE) — © 2026 Sidon Kodraliu. You're f
 
 ## Acknowledgements
 
+- [Sidon Kodraliu / DonSidro](https://github.com/DonSidro/LocalRock) — creator and maintainer of LocalRock.
+- [@pponce](https://github.com/pponce) — original native camera, iOS audio and S7 MaxV driving contribution ([PR #95](https://github.com/DonSidro/LocalRock/pull/95)).
 - [`local_roborock_server`](https://github.com/Python-roborock/local_roborock_server) — the self‑hosted backend this client targets.
 - [`python-roborock`](https://github.com/Python-roborock/python-roborock) — reference for the Roborock protocol.
 - [go2rtc](https://github.com/AlexxIT/go2rtc) — reference for the camera WebRTC‑over‑MQTT signaling.
