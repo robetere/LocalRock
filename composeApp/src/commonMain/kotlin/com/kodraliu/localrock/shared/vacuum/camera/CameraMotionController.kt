@@ -57,16 +57,17 @@ class CameraMotionController internal constructor(
     private var pilotVector = Pair(0.0, 0.0)
     private var sarosEndedSession = false
 
-    // Speed limits, not measured speeds. The Saros app previously exercised .4 rad/s.
-    fun pilotInput(throttle: Double, steering: Double, speed: Int, start: Boolean): Boolean {
+    // Full analogue range, using the established Saros Control Station command envelope.
+    // These are requested speeds, not measured chassis speeds.
+    fun pilotInput(throttle: Double, steering: Double, start: Boolean): Boolean {
         if (!experimentalDriveOnly || !controlsAllowed || !throttle.isFinite() || !steering.isFinite() ||
-            throttle !in -1.0..1.0 || steering !in -1.0..1.0 || speed !in 1..3) return false
+            throttle !in -1.0..1.0 || steering !in -1.0..1.0) return false
         if (throttle == 0.0 && steering == 0.0) { release(); return false }
         if (!start && (!holding || job == null)) return false
         if (start && (disposed || job != null || haltJob != null)) return false
-        val v = listOf(.04, .06, .08)[speed - 1]
-        val w = listOf(.25, .32, .4)[speed - 1]
-        pilotVector = Pair(throttle * v, steering * w)
+        var velocity = throttle * (if (throttle < 0.0) .12 else .30)
+        if (kotlin.math.abs(velocity) > .12) velocity *= 1.0 - .4 * kotlin.math.abs(steering)
+        pilotVector = Pair(velocity, steering * .4)
         if (start) beginHold { pilotVector }
         return true
     }

@@ -85,7 +85,6 @@ internal fun CameraVideoControls(
     var fillVideo by remember { mutableStateOf(controlsAllowed) }
     var showMiniMap by remember { mutableStateOf(false) }
     var cockpitMode by remember { mutableStateOf(CockpitMode.VIEWER) }
-    var speed by remember { mutableStateOf(2) }
     var details by remember { mutableStateOf(false) }
     val showDriveTest = cockpitMode == CockpitMode.PILOT
     val mapMode = sarosDriveTest && cockpitMode == CockpitMode.MAP
@@ -275,17 +274,9 @@ internal fun CameraVideoControls(
                     .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                     .padding(start=12.dp,end=12.dp,bottom=80.dp),
                     horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.Bottom) {
-                    CameraPilotJoystick(motion,ready && !callBusy,speed,Modifier.size(pilotPadSize))
+                    CameraPilotJoystick(motion,ready && !callBusy,Modifier.size(pilotPadSize))
                     Column(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xff171c20).copy(alpha=.88f))
                         .padding(8.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-                        Text("Speed limit",color=Color.LightGray,style=MaterialTheme.typography.labelSmall)
-                        Row(verticalAlignment=Alignment.CenterVertically) {
-                            TextButton(onClick={speed--},enabled=!busy && speed>1,contentPadding=PaddingValues(0.dp),
-                                modifier=Modifier.width(36.dp)) {Text("−",color=if(!busy && speed>1) Color.White else Color.Gray)}
-                            Text("${listOf(4,6,8)[speed-1]} cm/s",color=Color.White,style=MaterialTheme.typography.labelMedium)
-                            TextButton(onClick={speed++},enabled=!busy && speed<3,contentPadding=PaddingValues(0.dp),
-                                modifier=Modifier.width(36.dp)) {Text("+",color=if(!busy && speed<3) Color.White else Color.Gray)}
-                        }
                         Button(onClick={motion.stop(includeDock=false)},
                             colors=ButtonDefaults.buttonColors(containerColor=Color(0xffb3261e),contentColor=Color.White)) {
                             Icon(Icons.Default.Stop,null); Spacer(Modifier.width(4.dp)); Text("STOP")
@@ -454,11 +445,11 @@ private enum class CockpitMode { VIEWER, PILOT, MAP }
 
 /** One fresh touch gesture owns one drive operation. No restart after neutral or failure. */
 @Composable
-private fun CameraPilotJoystick(motion: CameraMotionController, enabled: Boolean, speed: Int, modifier: Modifier) {
+private fun CameraPilotJoystick(motion: CameraMotionController, enabled: Boolean, modifier: Modifier) {
     var knob by remember { mutableStateOf(Offset.Zero) }
     Canvas(modifier.semantics {contentDescription="Hold and drag joystick to drive; release to stop"}
         .clip(CircleShape).background(Color(0xff171c20).copy(alpha=.78f))
-        .pointerInput(motion,enabled,speed) {
+        .pointerInput(motion,enabled) {
             if (!enabled) return@pointerInput
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed=false)
@@ -478,7 +469,7 @@ private fun CameraPilotJoystick(motion: CameraMotionController, enabled: Boolean
                         val throttle=if(abs(unit.y)<.14f) 0.0 else -unit.y.toDouble()
                         val steering=if(abs(unit.x)<.14f) 0.0 else -unit.x.toDouble()
                         if(throttle!=0.0 || steering!=0.0) {
-                            running=motion.pilotInput(throttle,steering,speed,start=!attempted)
+                            running=motion.pilotInput(throttle,steering,start=!attempted)
                             attempted=true
                         } else if(running) {
                             motion.release()

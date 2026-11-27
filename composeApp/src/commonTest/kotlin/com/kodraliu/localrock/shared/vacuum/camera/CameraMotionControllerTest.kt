@@ -104,16 +104,44 @@ class CameraMotionControllerTest {
         val c=CameraMotionController(rpc,{true},
             CoroutineScope(SupervisorJob()+StandardTestDispatcher(testScheduler)),
             experimentalDriveOnly=true)
-        assertTrue(c.pilotInput(1.0,0.0,2,start=true))
+        assertTrue(c.pilotInput(1.0,0.0,start=true))
         runCurrent(); advanceTimeBy(250); runCurrent()
-        assertTrue(c.pilotInput(.5,-1.0,3,start=false))
+        assertTrue(c.pilotInput(.5,-1.0,start=false))
         advanceTimeBy(250); runCurrent(); c.release(); advanceUntilIdle()
         val last=rpc.calls.last {it.first=="app_rc_move"}.second.jsonArray.single().jsonObject
-        assertEquals(.04,last["velocity"]!!.jsonPrimitive.double)
+        assertEquals(.09,last["velocity"]!!.jsonPrimitive.double,1e-9)
         assertEquals(-.4,last["omega"]!!.jsonPrimitive.double)
         assertEquals(1,rpc.methods().count {it=="app_rc_start"})
         assertEquals(listOf("app_rc_stop","app_rc_end"),rpc.methods().takeLast(2))
-        assertFalse(c.pilotInput(1.0,0.0,2,start=false))
+        assertFalse(c.pilotInput(1.0,0.0,start=false))
+        c.dispose(); advanceUntilIdle()
+    }
+
+    @Test fun saros_analogue_full_range_preserves_reverse_and_corner_limits() = runTest {
+        val rpc=Rpc()
+        val c=CameraMotionController(rpc,{true},
+            CoroutineScope(SupervisorJob()+StandardTestDispatcher(testScheduler)),
+            experimentalDriveOnly=true)
+        fun lastMove()=rpc.calls.last {it.first=="app_rc_move"}.second.jsonArray.single().jsonObject
+        assertFalse(c.pilotInput(1.01,0.0,start=true))
+        assertFalse(c.pilotInput(Double.NaN,0.0,start=true))
+        assertTrue(c.pilotInput(1.0,0.0,start=true))
+        runCurrent(); advanceTimeBy(250); runCurrent()
+        assertEquals(.30,lastMove()["velocity"]!!.jsonPrimitive.double,1e-9)
+        assertTrue(c.pilotInput(.5,0.0,start=false))
+        advanceTimeBy(250); runCurrent()
+        assertEquals(.15,lastMove()["velocity"]!!.jsonPrimitive.double,1e-9)
+        assertTrue(c.pilotInput(-1.0,0.0,start=false))
+        advanceTimeBy(250); runCurrent()
+        assertEquals(-.12,lastMove()["velocity"]!!.jsonPrimitive.double,1e-9)
+        assertTrue(c.pilotInput(1.0,1.0,start=false))
+        advanceTimeBy(250); runCurrent()
+        assertEquals(.18,lastMove()["velocity"]!!.jsonPrimitive.double,1e-9)
+        assertEquals(.4,lastMove()["omega"]!!.jsonPrimitive.double,1e-9)
+        assertEquals(500,lastMove()["duration"]!!.jsonPrimitive.int)
+        assertFalse(c.pilotInput(0.0,0.0,start=false)); advanceUntilIdle()
+        assertEquals(listOf("app_rc_stop","app_rc_end"),rpc.methods().takeLast(2))
+        assertFalse(c.pilotInput(1.0,0.0,start=false))
         c.dispose(); advanceUntilIdle()
     }
 
