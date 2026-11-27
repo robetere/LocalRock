@@ -40,7 +40,7 @@ class CameraVoiceCall internal constructor(
         val peer = currentPeer() ?: return
         val id = currentClientId() ?: return
         if (!peer.supportsVoiceCall) {
-            _error.value = "Voice calls are available in the iPhone test build only."
+            _error.value = "Voice calls are not supported by this video connection."
             return
         }
         if (peer === blockedPeer) {
@@ -56,7 +56,7 @@ class CameraVoiceCall internal constructor(
             var requested = false
             try {
                 if (!peer.requestMicrophonePermission()) {
-                    _error.value = "Microphone permission was not granted. Enable it for LocalRock in iPhone Settings to make a call."
+                    _error.value = "Microphone permission was not granted. Enable it for LocalRock in your device Settings to make a call."
                     return@launch
                 }
                 currentCoroutineContext().ensureActive()
