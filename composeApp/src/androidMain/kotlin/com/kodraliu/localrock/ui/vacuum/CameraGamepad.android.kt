@@ -1,10 +1,15 @@
 package com.kodraliu.localrock.ui.vacuum
 
+import android.content.Context
+import android.hardware.input.InputManager
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import com.kodraliu.localrock.shared.vacuum.camera.CameraMotionController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -39,12 +44,21 @@ internal object CameraGamepadBridge {
 @Composable
 internal actual fun CameraGamepadSession(motion: CameraMotionController, enabled: Boolean, layout: CameraPadLayout): String {
     val session = remember(motion, layout) { AndroidCameraGamepad(motion, layout) }
-    DisposableEffect(session, enabled) {
+    val context = LocalContext.current
+    val inputManager = remember(context) { context.getSystemService(Context.INPUT_SERVICE) as InputManager }
+    DisposableEffect(session, enabled, inputManager) {
+        val listener = object : InputManager.InputDeviceListener {
+            override fun onInputDeviceAdded(deviceId: Int) = Unit
+            override fun onInputDeviceChanged(deviceId: Int) { session.deviceChanged(deviceId) }
+            override fun onInputDeviceRemoved(deviceId: Int) { session.deviceRemoved(deviceId) }
+        }
         if (enabled) {
             session.reset("Move and centre controls to initialise")
             CameraGamepadBridge.session = session
+            inputManager.registerInputDeviceListener(listener, Handler(Looper.getMainLooper()))
         }
         onDispose {
+            if (enabled) inputManager.unregisterInputDeviceListener(listener)
             if (CameraGamepadBridge.session === session) {
                 CameraGamepadBridge.session = null
                 session.reset("Controller off")
@@ -120,10 +134,19 @@ internal class AndroidCameraGamepad(private val motionController: CameraMotionCo
         if (!select(event.deviceId)) return false
         if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) return true
         val age = SystemClock.uptimeMillis() - event.eventTime
-        if (event.keyCode == KeyEvent.KEYCODE_BUTTON_B || age !in 0L until 1_500L) state.disarm()
+        if (event.keyCode == KeyEvent.KEYCODE_BUTTON_B || age !in 0L until CAMERA_PAD_EVENT_MAX_AGE_MS) state.disarm()
         else state.toggle()
         publishStatus()
         return true
+    }
+
+    fun deviceRemoved(id: Int) {
+        if (deviceId == id) reset("Controller disconnected")
+    }
+
+    fun deviceChanged(id: Int) {
+        // Axis ranges or source capabilities may have changed. Require a fresh neutral and A.
+        if (deviceId == id) reset("Controller changed · centre controls and press A")
     }
 
     fun tick() {

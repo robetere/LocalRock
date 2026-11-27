@@ -78,15 +78,38 @@ class CameraGamepadStateTest {
     @Test fun staleInputDisarmsAndDoesNotResumeAutomatically() {
         val r = Rig()
         r.arm(); r.input(1.0)
-        r.machine.tick(1_499)
-        assertEquals(CameraPadState.DRIVING, r.machine.state)
         r.machine.tick(1_500)
+        assertEquals(CameraPadState.DRIVING, r.machine.state)
+        r.machine.tick(CAMERA_PAD_INPUT_LEASE_MS - 1)
+        assertEquals(CameraPadState.DRIVING, r.machine.state)
+        r.machine.tick(CAMERA_PAD_INPUT_LEASE_MS)
         assertEquals(CameraPadState.WAIT_NEUTRAL, r.machine.state)
         assertEquals(1, r.releases)
         r.busy = false
-        r.input(0.0, time = 1_600)
-        r.input(1.0, time = 1_700)
+        r.input(0.0, time = CAMERA_PAD_INPUT_LEASE_MS + 100)
+        r.input(1.0, time = CAMERA_PAD_INPUT_LEASE_MS + 200)
         assertEquals(1, r.moves.size)
+    }
+
+    @Test fun steadyTriggerSurvivesStartupButFreshNeutralStopsImmediately() {
+        val r = Rig()
+        r.arm(); r.input(1.0)
+        r.machine.tick(3_000)
+        assertEquals(CameraPadState.DRIVING, r.machine.state)
+        r.input(0.0, time = 3_100)
+        assertEquals(CameraPadState.STOPPING, r.machine.state)
+        assertEquals(1, r.releases)
+    }
+
+    @Test fun freshAxisChangesExtendTheBoundedLease() {
+        val r = Rig()
+        r.arm(); r.input(1.0)
+        r.input(.9, time = 4_000)
+        r.machine.tick(8_999)
+        assertEquals(CameraPadState.DRIVING, r.machine.state)
+        r.machine.tick(9_000)
+        assertEquals(CameraPadState.WAIT_NEUTRAL, r.machine.state)
+        assertEquals(1, r.releases)
     }
 
     @Test fun staleQueuedEventsAndConflictingTriggersFailClosed() {

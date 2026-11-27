@@ -23,6 +23,11 @@ internal fun cameraPadInput(layout: CameraPadLayout, x: Double, y: Double, left:
     return CameraPadInput(deadzone(right, .08) - deadzone(left, .08), steering)
 }
 
+// Android reports axis changes, not a guaranteed periodic heartbeat for a steady stick.
+// A bounded silence lease permits ordinary holds but never substitutes for a fresh event.
+internal const val CAMERA_PAD_INPUT_LEASE_MS = 5_000L
+internal const val CAMERA_PAD_EVENT_MAX_AGE_MS = 1_500L
+
 internal enum class CameraPadState {
     WAIT_NEUTRAL, DISARMED, ARMED_IDLE, DRIVING, STOPPING
 }
@@ -35,7 +40,7 @@ internal class CameraGamepadState(
     private val busy: () -> Boolean,
     private val move: (CameraPadInput, Boolean) -> Boolean,
     private val release: () -> Unit,
-    private val staleMs: Long = 1_500L,
+    private val staleMs: Long = CAMERA_PAD_INPUT_LEASE_MS,
     private val motionFailed: () -> Boolean = { false },
 ) {
     var state = CameraPadState.WAIT_NEUTRAL
@@ -46,7 +51,7 @@ internal class CameraGamepadState(
     private var lastInputNeutral = false
 
     fun input(input: CameraPadInput, eventMs: Long, nowMs: Long) {
-        if (!input.valid || input.conflicting || nowMs - eventMs !in 0L until staleMs ||
+        if (!input.valid || input.conflicting || nowMs - eventMs !in 0L until CAMERA_PAD_EVENT_MAX_AGE_MS ||
             (lastInputMs?.let { eventMs < it } == true)) {
             disarm(if (input.conflicting) "Release both triggers · press A to re-enable" else "Invalid or stale input · centre controls and press A")
             return
@@ -96,7 +101,7 @@ internal class CameraGamepadState(
         when (state) {
             CameraPadState.DRIVING -> {
                 val age = lastInputMs?.let { nowMs - it }
-                if (age == null || age !in 0L until staleMs) disarm("Input stale · centre controls and press A")
+                if (age == null || age !in 0L until staleMs) disarm("Input unchanged too long · centre controls and press A")
                 else if (!busy()) disarm("Drive ended · centre controls and press A")
             }
             CameraPadState.STOPPING -> if (!busy()) {
