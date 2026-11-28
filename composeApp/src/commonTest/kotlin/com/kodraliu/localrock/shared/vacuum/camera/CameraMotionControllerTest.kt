@@ -229,6 +229,37 @@ class CameraMotionControllerTest {
         c.dispose(); advanceUntilIdle()
     }
 
+    @Test fun sarosOptInAllowsCleaningAndBlocksDrivingDuringTask() = runTest {
+        val rpc = Rpc()
+        val c = CameraMotionController(rpc, { true }, backgroundScope, experimentalDriveOnly = true,
+            experimentalTasksAllowed = { true })
+        c.cleaning(CameraCleaningAction.START); runCurrent(); assertTrue("app_start" in rpc.methods())
+        c.hold(CameraMotionController.Direction.FORWARD); runCurrent()
+        assertFalse("app_rc_start" in rpc.methods())
+        c.cleaning(CameraCleaningAction.PAUSE); runCurrent(); assertTrue("app_pause" in rpc.methods())
+        c.dispose(); runCurrent()
+    }
+
+    @Test fun sarosOptInBlocksTasksDuringExternalManualSessionOrReturn() = runTest {
+        val rpc = Rpc().apply { state=7 }
+        val c = CameraMotionController(rpc, { true }, backgroundScope, experimentalDriveOnly = true,
+            experimentalTasksAllowed = { true })
+        c.cleaning(CameraCleaningAction.START); runCurrent()
+        rpc.state=3; rpc.returning=1
+        c.goTo(10_000,10_000,0); runCurrent()
+        assertFalse("app_start" in rpc.methods()); assertFalse("app_goto_target" in rpc.methods())
+        c.dispose(); runCurrent()
+    }
+
+    @Test fun sarosOptInAllowsNavigationAndStopsOnlyOwnedTarget() = runTest {
+        val rpc = Rpc()
+        val c = CameraMotionController(rpc, { false }, backgroundScope, experimentalDriveOnly = true,
+            experimentalTasksAllowed = { true })
+        c.goTo(10_000,10_000,0); runCurrent(); assertTrue("app_goto_target" in rpc.methods())
+        c.stop(includeDock=false); runCurrent(); assertTrue("stop_goto_target" in rpc.methods())
+        c.dispose(); runCurrent()
+    }
+
     @Test fun dockedPlayStartsCleaningBeforeVideoConnects() = runTest {
         val rpc=Rpc().apply {state=8};val c=controller(rpc){false}
         c.cleaning(CameraCleaningAction.START);advanceUntilIdle()

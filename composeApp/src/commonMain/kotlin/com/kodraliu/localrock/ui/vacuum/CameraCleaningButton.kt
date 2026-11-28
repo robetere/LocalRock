@@ -23,7 +23,7 @@ import com.kodraliu.localrock.shared.vacuum.camera.cameraCleaningAction
 import kotlinx.coroutines.CancellationException
 
 @Composable
-internal fun CameraCleaningButton(viewModel: VacuumViewModel, motion: CameraMotionController, compact: Boolean = false, modifier: Modifier = Modifier) {
+internal fun CameraCleaningButton(viewModel: VacuumViewModel, motion: CameraMotionController, compact: Boolean = false, modifier: Modifier = Modifier, allowStart: Boolean = false) {
     val status by viewModel.status.collectAsState()
     val busy by motion.busy.collectAsState()
     val manualMode by motion.manualMode.collectAsState()
@@ -34,9 +34,9 @@ internal fun CameraCleaningButton(viewModel: VacuumViewModel, motion: CameraMoti
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { /* The next action still requires a fresh status read. */ }
     }
-    if (status.state in setOf(VacuumStateCodes.CHARGING, VacuumStateCodes.CHARGING_COMPLETE)) return
+    if (!allowStart && status.state in setOf(VacuumStateCodes.CHARGING, VacuumStateCodes.CHARGING_COMPLETE)) return
     // The viewer can pause/resume an existing clean, but never offers a new cleaning run.
-    if (action == null || action == CameraCleaningAction.START) return
+    if (action == null || (!allowStart && action == CameraCleaningAction.START)) return
     if (compact) {
         FilledTonalIconButton(onClick={action?.let(motion::cleaning)},enabled=!busy && action!=null,modifier=modifier.size(56.dp)) {
             Icon(if(action==CameraCleaningAction.PAUSE) Icons.Default.Pause else Icons.Default.PlayArrow,action?.label ?: "Cleaning unavailable")

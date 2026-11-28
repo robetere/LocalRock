@@ -30,11 +30,13 @@ class CameraMotionController internal constructor(
     private val scope: CoroutineScope,
     private val controlsAllowed: Boolean = true,
     private val experimentalDriveOnly: Boolean = false,
+    private val experimentalTasksAllowed: () -> Boolean = { false },
 ) {
-    constructor(session: VacuumSession, controlsAllowed: Boolean = true, experimentalDriveOnly: Boolean = false, ready: () -> Boolean) : this(
+    constructor(session: VacuumSession, controlsAllowed: Boolean = true, experimentalDriveOnly: Boolean = false,
+        experimentalTasksAllowed: () -> Boolean = { false }, ready: () -> Boolean) : this(
         CameraRpc { method, params -> session.sendCommandRaw(method, params, timeoutMs = cameraControlTimeoutMs(method)) },
         ready, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
-        controlsAllowed, experimentalDriveOnly,
+        controlsAllowed, experimentalDriveOnly, experimentalTasksAllowed,
     )
 
     enum class Direction(val velocity: Double, val omega: Double) {
@@ -58,6 +60,9 @@ class CameraMotionController internal constructor(
     private var disposed = false
     private var pilotVector = CameraDriveVector(0.0, 0.0)
     private var sarosEndedSession = false
+    private var sarosTaskUnconfirmed = false
+
+    private fun tasksAllowed() = !experimentalDriveOnly || experimentalTasksAllowed()
 
     // Full analogue range, using the established Saros Control Station command envelope.
     // These are requested speeds, not measured chassis speeds.
@@ -151,6 +156,7 @@ class CameraMotionController internal constructor(
         var status = readStatus()
         requireNoTask(status)
         if (experimentalDriveOnly) {
+            if (sarosTaskUnconfirmed) throw MotionFailure("An autonomous command was not confirmed. Check the robot and reopen the camera screen before driving.")
             if (sarosEndedSession && status.state() in manualStates && status.number("in_returning") == 0) {
                 _progress.value = "Waiting for previous drive to finish…"
                 status = waitForDriveState("Waiting for previous manual session to end",
@@ -191,7 +197,8 @@ class CameraMotionController internal constructor(
         }
 
     fun cleaning(action: CameraCleaningAction) = launchOperation {
-        if (experimentalDriveOnly) return@launchOperation
+        if (!tasksAllowed()) return@launchOperation
+        if (experimentalDriveOnly && sarosTaskUnconfirmed) throw MotionFailure("Check the robot and reopen the camera screen before issuing another task.")
         if (_manualMode.value) {
             if (!endManualMode()) return@launchOperation
             deadline("Waiting for manual control to end", 5_000) {
@@ -199,23 +206,30 @@ class CameraMotionController internal constructor(
             }
         }
         val status = readStatus()
+        if (experimentalDriveOnly) requireSarosTaskStatus(status)
         val method = cameraCleaningCommand(action, status.state(),
             status["in_cleaning"]?.jsonPrimitive?.intOrNull,
             status["error_code"]?.jsonPrimitive?.intOrNull)
             ?: error("The robot's cleaning state changed")
         if (action == CameraCleaningAction.START) _viewerStartedActivity.value = true
-        ack(method)
+        if (experimentalDriveOnly && action != CameraCleaningAction.PAUSE) {
+            confirmSarosAutonomy(method) { ack(method) }
+        } else ack(method)
     }
 
     /** Pin-and-Go can undock the robot before camera frames are available. */
     fun goTo(x: Int, y: Int, floor: Int) = launchOperation {
-        if (experimentalDriveOnly) return@launchOperation
+        if (!tasksAllowed()) return@launchOperation
+        if (experimentalDriveOnly && sarosTaskUnconfirmed) throw MotionFailure("Check the robot and reopen the camera screen before issuing another task.")
         require(x in 0..51_200 && y in 0..51_200)
-        requireIdle(floor)
+        val status = requireIdle(floor)
+        if (experimentalDriveOnly) requireSarosTaskStatus(status)
         navigationRequested = true
         _viewerStartedActivity.value = true
-        try { ack("app_goto_target", JsonArray(listOf(JsonPrimitive(x), JsonPrimitive(y)))) }
-        catch (e: MotionRefused) { navigationRequested = false; throw e }
+        try {
+            val send: suspend () -> Unit = { ack("app_goto_target", JsonArray(listOf(JsonPrimitive(x), JsonPrimitive(y)))) }
+            if (experimentalDriveOnly) confirmSarosAutonomy("app_goto_target", send) else send()
+        } catch (e: MotionRefused) { navigationRequested = false; throw e }
     }
 
     fun dock(onDocked: () -> Unit = {}) = endViewing(returnToDock = true, onFinished = onDocked)
@@ -224,7 +238,17 @@ class CameraMotionController internal constructor(
     fun endViewing(returnToDock: Boolean = false, onFinished: () -> Unit = {}) {
         if (!controlsAllowed) { onFinished(); return }
         transition {
-            if (returnToDock && !experimentalDriveOnly) {
+            if (returnToDock && experimentalDriveOnly && tasksAllowed()) {
+                // Unlike the OEM session, Saros must leave manual mode before autonomous movement.
+                if (!endManualMode()) return@transition
+                val status = readStatus()
+                if (status.number("error_code") != 0 || status.number("in_cleaning") == null ||
+                    status.number("in_returning") == null || status.state() in manualStates ||
+                    status.state() !in setOf(2, 3, 5, 6, 8, 10, 11, 15, 16, 17, 18, 24, 100))
+                    throw MotionFailure("Return to dock blocked: check robot status and wait for manual control to end.")
+                if (status.state() !in setOf(6, 8, 15, 100)) confirmSarosAutonomy("app_charge") { ack("app_charge") }
+                navigationRequested = false
+            } else if (returnToDock && !experimentalDriveOnly) {
                 val status = readStatus()
                 check(status["error_code"]?.jsonPrimitive?.intOrNull == 0)
                 check(status.state() in setOf(2, 3, 4, 5, 6, 7, 8, 10, 11, 15, 16, 17, 18, 24, 100))
@@ -338,6 +362,37 @@ class CameraMotionController internal constructor(
             true
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { reportFailure(e); false }
+    }
+
+    private fun requireSarosTaskStatus(status: JsonObject) {
+        if (_manualMode.value || status.state() in manualStates || status.number("in_returning") != 0 ||
+            status.number("error_code") != 0 || status.number("in_cleaning") == null)
+            throw MotionFailure("Autonomous task blocked: wait for manual control and docking to end, and check robot status.")
+    }
+
+    // Acknowledgement alone is not proof of a state transition. Keep manual motion
+    // blocked after an ambiguous command, and never replay it automatically.
+    private suspend fun confirmSarosAutonomy(method: String, send: suspend () -> Unit) {
+        if (!tasksAllowed()) throw MotionFailure("Experimental camera tasks are disabled.")
+        sarosTaskUnconfirmed = true
+        try { send() } catch (e: MotionRefused) { sarosTaskUnconfirmed = false; throw e }
+        _progress.value = "Confirming robot task…"
+        deadline("Confirming robot task; check robot before driving", 5_000) {
+            while (true) {
+                val status = readStatus()
+                if (status.number("error_code") != 0) throw MotionFailure("Robot task status is unavailable or reports an error.")
+                val confirmed = when (method) {
+                    "app_goto_target" -> status.state() == VacuumStateCodes.GOING_TO_TARGET
+                    "app_charge" -> status.state() in setOf(6, 8, 15, 100)
+                    else -> status.number("in_cleaning") in setOf(1, 2, 3) &&
+                        status.state() in setOf(VacuumStateCodes.CLEANING, VacuumStateCodes.ZONED_CLEANING,
+                            VacuumStateCodes.SEGMENT_CLEANING, VacuumStateCodes.SPOT_CLEANING)
+                }
+                if (confirmed) break
+                delay(100)
+            }
+        }
+        sarosTaskUnconfirmed = false
     }
 
     private fun requireReady() {

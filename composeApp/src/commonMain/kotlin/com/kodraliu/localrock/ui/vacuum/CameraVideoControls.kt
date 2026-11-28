@@ -41,6 +41,7 @@ internal fun CameraVideoControls(
     state: CameraLiveSession.State, ready: Boolean, expanded: Boolean,
     controlsAllowed: Boolean, sarosDriveTest: Boolean = false, driveReady: Boolean = ready,
     voice: CameraVoiceCall,
+    sarosTasks: Boolean = false,
     onExpand: (Boolean) -> Unit, onStopVideo: () -> Unit, onDock: () -> Unit,
     onRetry: () -> Unit, quality: CameraVideoQuality, qualityEnabled: Boolean, qualityError: String?,
     diagnostics: RtcDiagnostics, onQuality: (CameraVideoQuality) -> Unit, onRetrySd: () -> Unit,
@@ -66,6 +67,8 @@ internal fun CameraVideoControls(
     var showMiniMap by remember { mutableStateOf(false) }
     var cockpitMode by remember { mutableStateOf(CockpitMode.VIEWER) }
     var details by remember { mutableStateOf(false) }
+    var taskDialog by remember { mutableStateOf(false) }
+    var taskMap by remember { mutableStateOf(false) }
     var gamepadSelected by remember { mutableStateOf(false) }
     var padLayout by remember { mutableStateOf(CameraPadLayout.RACING) }
     var settingsSection by remember { mutableStateOf(CameraSettingsSection.CAMERA) }
@@ -73,14 +76,14 @@ internal fun CameraVideoControls(
     val mapMode = sarosDriveTest && cockpitMode == CockpitMode.MAP
     val showDriveTest = cockpitMode == CockpitMode.PILOT || mapMode
     fun changeMode(mode: CockpitMode) { motion.release(); gamepadSelected=false; cockpitMode = mode }
-    val gamepadStatus = CameraGamepadSession(motion, sarosDriveTest && showDriveTest && gamepadSelected && driveReady && !callBusy && !settings && !details,
+    val gamepadStatus = CameraGamepadSession(motion, sarosDriveTest && showDriveTest && gamepadSelected && driveReady && !callBusy && !settings && !details && !taskDialog,
         padLayout)
     var mapExpanded by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
     var interaction by remember { mutableStateOf(0) }
     var target by remember(floor, map?.viewportIdentity(floor)) { mutableStateOf<Pair<Int,Int>?>(null) }
     // Navigation is independent of video: a docked robot must be able to leave through Go.
-    val enabled = controlsAllowed && !busy
+    val enabled = (controlsAllowed || sarosTasks) && !busy
     val docked = status.state in setOf(VacuumStateCodes.CHARGING, VacuumStateCodes.CHARGING_COMPLETE)
     val headline = if (status.state == VacuumStateCodes.CHARGING_COMPLETE) "Charged"
         else status.state?.let { VacuumStateCodes.describe(it) } ?: "Robot status unavailable"
@@ -131,13 +134,14 @@ internal fun CameraVideoControls(
         }
     }
     fun go() {
-        if (!controlsAllowed) return
+        if (!controlsAllowed && !sarosTasks) return
         val point = target ?: return
         val current = map ?: return
         val cell = current.mmToCell(point.first,point.second)
         if (cameraTargetAt(current,Offset(cell.x/current.width,cell.y/current.height)) != null) {
             motion.goTo(point.first,point.second,floor)
             mapExpanded = false
+            if (sarosTasks) { taskDialog = false; taskMap = false; target = null }
         } else target = null
     }
     val targetPanel: @Composable (Modifier, Boolean) -> Unit = { modifier, canClose ->
@@ -218,6 +222,11 @@ internal fun CameraVideoControls(
                         if (ready) "Video connected" else "Video not connected",
                         Modifier.size(18.dp),tint=if (ready) Color(0xff68d9a2) else Color(0xffffca75))
                 }
+                if (sarosTasks && cockpitMode != CockpitMode.PILOT && !settings) {
+                    IconButton(onClick={motion.release();gamepadSelected=false;target=null;taskMap=false;taskDialog=true}) {
+                        Icon(Icons.Default.PlayArrow,"Camera tasks",tint=Color.White)
+                    }
+                }
                 if (controlsVisible || !expanded) {
                     if (!sarosDriveTest) TextButton(onClick={motion.release();settings=true}) { Text("Options",color=Color.White) }
                 }
@@ -277,7 +286,7 @@ internal fun CameraVideoControls(
                     .windowInsetsPadding(overlayInsets.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                     .padding(start=12.dp,end=12.dp,bottom=80.dp),
                     horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.Bottom) {
-                    if (!gamepadSelected) CameraPilotJoystick(motion,driveReady && !callBusy,Modifier.size(pilotPadSize))
+                    if (!gamepadSelected) CameraPilotJoystick(motion,driveReady && !callBusy && !taskDialog,Modifier.size(pilotPadSize))
                     else Spacer(Modifier.size(1.dp))
                     if (cameraGamepadSupported) FilledTonalButton(
                         onClick={motion.release();gamepadSelected=!gamepadSelected},
@@ -372,7 +381,7 @@ internal fun CameraVideoControls(
         val issue = error ?: callError
         if (sarosDriveTest) {
             val message = when {
-                issue != null -> if (error != null) "Drive needs attention" else "Call needs attention"
+                issue != null -> if (error != null) "Robot control needs attention" else "Call needs attention"
                 controlProgress != null -> controlProgress
                 showDriveTest -> if (!ready) "Video disconnected" else if (!driveReady) "Waiting for fresh video · driving disabled" else if (gamepadSelected) gamepadStatus else "Hold joystick to drive"
                 else -> null
@@ -391,6 +400,26 @@ internal fun CameraVideoControls(
             .background(if (issue != null) Color(0xff5b2424) else Color(0xff242424))
             .padding(8.dp),color=Color.White)}
     }
+    if (taskDialog && sarosTasks) AlertDialog(
+        onDismissRequest={taskDialog=false;taskMap=false;target=null},
+        title={Text(if(taskMap) "Pin & Go (experimental)" else "Camera tasks (experimental)")},
+        text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            if (taskMap) {
+                targetPanel(Modifier.fillMaxWidth().height(260.dp),false)
+            } else {
+                Text("Robot: $headline. Cleaning can continue when the video closes. Finish autonomous movement before piloting.")
+                CameraCleaningButton(viewModel,motion,allowStart=true)
+                OutlinedButton(onClick={taskMap=true;target=null},enabled=enabled) {Text("Choose map destination")}
+                OutlinedButton(onClick={taskDialog=false;onDock()},enabled=enabled) {Text("Return to dock and end video")}
+                if (status.state == VacuumStateCodes.GOING_TO_TARGET) OutlinedButton(
+                    onClick={motion.stop(includeDock=false)},enabled=enabled) {Text("Stop camera navigation")}
+            }
+            controlProgress?.let {Text(it)}
+            error?.let {Text(it,color=MaterialTheme.colorScheme.error)}
+        }},
+        confirmButton={TextButton(onClick={taskDialog=false;taskMap=false;target=null}) {Text("Close")}},
+        dismissButton={if(taskMap) TextButton(onClick={taskMap=false;target=null}) {Text("Back")}},
+    )
     if(details) AlertDialog(onDismissRequest={details=false},title={Text("Control details")},
         text={Text(error ?: callError ?: "No current error")},
         confirmButton={TextButton(onClick={details=false}){Text("Close")}})

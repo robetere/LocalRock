@@ -48,11 +48,14 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
     val videoEnabled by viewModel.videoEnabled.collectAsState()
     val modelSupport = remember(viewModel) { cameraModelSupport(viewModel.modelName) }
     var testingEnabled by remember(viewModel) { mutableStateOf(false) }
+    var cameraTasksOptIn by remember(viewModel) { mutableStateOf(false) }
     val canConnect = videoEnabled && liveViewSupported && modelSupport.canConnect(testingEnabled)
     val canConnectNow by rememberUpdatedState(canConnect)
     val controlsAllowed = liveViewSupported && modelSupport.allowsRobotControls
     // Manual driving remains experimental and separate from cleaning and navigation.
     val sarosDriveTest = liveViewSupported && supportsExperimentalManualDriving(viewModel.modelName)
+    val sarosTasks = sarosDriveTest && canConnect && cameraTasksOptIn
+    val sarosTasksNow by rememberUpdatedState(sarosTasks)
     val live = remember(viewModel) {
         CameraLiveSession(viewModel.repository.session, accessAllowed = { canConnectNow })
     }
@@ -77,7 +80,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
     val driveReady = ready && freshVideo
     val motion = remember(viewModel) {
         CameraMotionController(viewModel.repository.session, controlsAllowed || sarosDriveTest,
-            experimentalDriveOnly = sarosDriveTest) { readyNow && canConnectNow && live.hasFreshVideo() }
+            experimentalDriveOnly = sarosDriveTest, experimentalTasksAllowed = { sarosTasksNow }) { readyNow && canConnectNow && live.hasFreshVideo() }
     }
     var expanded by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf(false) }
@@ -201,7 +204,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
         motion.release()
         exitNavigates = navigate
         if (!viewing) { live.stop(); if (navigate) onBack() }
-        else if (startedActivity && controlsAllowed) exitDialog = true
+        else if (startedActivity && (controlsAllowed || sarosTasks)) exitDialog = true
         else finish()
     }
     BackHandler {
@@ -218,6 +221,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
         cancelBiometric()
         entry.cancel()
         testingEnabled = false
+        cameraTasksOptIn = false
         pin = ""
         viewing = false
         pendingCameraStart = false
@@ -259,6 +263,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
             if (viewing) {
                 CameraVideoControls(viewModel, peer, motion, state, ready, expanded,
                     controlsAllowed=controlsAllowed, sarosDriveTest=sarosDriveTest, driveReady=driveReady,
+                    sarosTasks=sarosTasks,
                     voice=live.voice,
                     onExpand={expanded=it}, onStopVideo={requestExit(false)},
                     onDock={motion.release();exitNavigates=false;dockDialog=true},onRetry={start()},
@@ -282,7 +287,7 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
                     Text(viewModel.deviceName, style = MaterialTheme.typography.titleMedium)
                     if (modelSupport == CameraModelSupport.EXPERIMENTAL) {
                         Text("Video and audio testing", style = MaterialTheme.typography.titleMedium)
-                        Text(if (sarosDriveTest) "Video, Android two-way audio and manual driving have been observed on Saros 10R firmware 02.52.86 in this fork. Compatibility remains experimental; cleaning and Pin-and-Go are not enabled."
+                        Text(if (sarosDriveTest) "Video, Android two-way audio and manual driving have been observed on Saros 10R firmware 02.52.86 in this fork. Compatibility remains experimental; camera tasks require a separate opt-in."
                             else "S7 MaxV is upstream-tested. Saros 10R has experimental hardware results in this fork. Enable testing to report compatibility for your robot.",
                             textAlign = TextAlign.Center)
                         Text(listOfNotNull(viewModel.modelName, viewModel.firmwareVersion?.let { "Firmware $it" }).joinToString(" · "),
@@ -293,15 +298,27 @@ fun CameraLiveViewScreen(viewModel: VacuumViewModel, onBack: () -> Unit) {
                                 entry.cancel()
                                 pin = ""
                                 testingEnabled = it
+                                if (!it) cameraTasksOptIn = false
                                 dismissKeyboard()
                             }).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = testingEnabled, onCheckedChange = null)
                             Spacer(Modifier.width(8.dp))
                             Text("Enable video and audio testing for this robot")
                         }
-                        Text(if (sarosDriveTest) "Video testing includes optional experimental manual driving. Keep the robot in sight and release the controls to stop. When charging, move the joystick forward to test leaving the dock. Cleaning and map navigation remain disabled."
+                        Text(if (sarosDriveTest) "Video testing includes optional experimental manual driving. Keep the robot in sight and release the controls to stop. When charging, move the joystick forward to test leaving the dock. Autonomous tasks are separate and experimental."
                             else "Testing enables video viewing and experimental voice calls on supported platforms. Driving and cleaning controls are unavailable on this model.",
                             style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                        if (sarosDriveTest && testingEnabled) {
+                            Row(Modifier.fillMaxWidth().toggleable(value = cameraTasksOptIn, role = Role.Checkbox,
+                                enabled = !checkingCredential && biometricJob == null,
+                                onValueChange = { cameraTasksOptIn = it }), verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = cameraTasksOptIn, onCheckedChange = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Enable experimental camera cleaning and navigation")
+                            }
+                            Text("Not yet hardware validated. Use Tasks in View or Map; supervise the robot. Manual driving requires an idle robot.",
+                                style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                        }
                         TextButton(onClick = { uriHandler.openUri("https://github.com/DonSidro/LocalRock/pull/95") }) {
                             Text("Report your result", color = Color.White)
                         }

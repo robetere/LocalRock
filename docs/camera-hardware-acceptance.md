@@ -78,3 +78,19 @@ publishing. Do not upload private imagery or credentials to the public fork.
 
 iOS physical testing is not available to the fork maintainer. Request separate
 S7 MaxV/iOS regression testing from upstream; CI compilation is not a substitute.
+
+## Experimental camera tasks (separate opt-in; not yet hardware validated)
+
+Use the normal robot stop control if uncertain. Record commands and observed state; do not infer success from the UI alone.
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| T01 | Leave camera tasks unchecked | No Saros autonomous controls |
+| T02 | Opt in; open View and Tasks while docked | Start cleaning is available if fresh status permits |
+| T03 | Start, pause, resume a clean | Correct task is preserved; manual drive refuses active cleaning |
+| T04 | Select valid map target, tap Go | Fresh floor check; navigation only after explicit tap |
+| T05 | Stop camera navigation | Only viewer-owned navigation is stopped |
+| T06 | Request dock while viewing | Confirmation; manual session ended before return command; video closes after confirmation |
+| T07 | Leave viewer during cleaning | Cleaning continues; manual movement and owned navigation are cleaned up |
+| T08 | Simulate missing acknowledgement or stale task state | No replay; manual drive blocked until checking robot and reopening screen |
+
