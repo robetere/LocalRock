@@ -2,7 +2,7 @@ name: Camera C0.1 Android baseline
 
 on:
   push:
-    branches: [feature/camera-support]
+    branches: [master, feature/camera-support]
   workflow_dispatch:
 
 permissions:

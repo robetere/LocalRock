@@ -1,7 +1,7 @@
 name: Camera iOS compilation
 on:
   push:
-    branches: [feature/camera-support]
+    branches: [master, feature/camera-support]
     paths:
       - 'composeApp/**'
       - 'iosApp/**'
